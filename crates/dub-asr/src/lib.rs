@@ -10,6 +10,7 @@
 
 mod hallucination;
 mod known_speakers;
+mod nemotron_asr;
 mod reconcile;
 mod resample;
 mod segment;
@@ -23,6 +24,7 @@ pub use speaker_global::{
     cluster_embeddings, cosine, map_local_to_global, Embedding, LocalSpeaker, NullEmbedder,
     SpeakerEmbedder,
 };
+pub use nemotron_asr::{nemotron_lang, NemotronAsr};
 pub use whisper::WhisperAsr;
 pub use window::{
     detect_active_spans, merge_windows, plan_windows, speech_envelope, Window, WindowConfig,
@@ -48,7 +50,7 @@ pub const DIAR_MODEL_FILE: &str = "nemotron3_diar_v3.onnx";
 /// недоступности CUDA (нет GPU-сборки onnxruntime / провайдера / cuDNN) создание сессии падает ОШИБКОЙ,
 /// а НЕ тихо откатывается на CPU. Вызывающий (сервер) ловит и показывает юзеру уведомление с выбором
 /// (переключить на CPU / доустановить компонент). Иначе (cpu/пусто) — CPU-провайдер по умолчанию.
-fn exec_config() -> ExecutionConfig {
+pub(crate) fn exec_config() -> ExecutionConfig {
     use ort::session::builder::GraphOptimizationLevel;
     let level = std::env::var("DUB_ASR_OPT_LEVEL")
         .ok()
@@ -90,7 +92,7 @@ pub const TARGET_SR: u32 = 16_000;
 /// Поиск (первый существующий): env DUB_ASR_ORT_DYLIB -> <models_root>/runtime/onnxruntime-win-x64-1.28.2/
 /// lib/onnxruntime.dll -> та же DLL рядом с бинарём (портативная раскладка). models_root: env
 /// DUBENGINE_MODELS_ROOT, иначе <exe_dir>/models или <exe_dir>/../../models (dev-раскладка target/…).
-fn ensure_ort_dylib() {
+pub(crate) fn ensure_ort_dylib() {
     use std::sync::Once;
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
@@ -783,7 +785,7 @@ const TDT_FRAME_SECS: f64 = 0.08;
 /// `offset`. Конец слова = кадр эмиссии последнего токена + его TDT-длительность; длительность 0
 /// (следующий токен в том же кадре) даёт end == start, и такому слову отдаётся кадр эмиссии, не дальше
 /// конца клипа `clip_secs`.
-fn words_from_tokens(tokens: Vec<parakeet_rs::TimedToken>, offset: f64, clip_secs: f64) -> Vec<Word> {
+pub(crate) fn words_from_tokens(tokens: Vec<parakeet_rs::TimedToken>, offset: f64, clip_secs: f64) -> Vec<Word> {
     let mut out: Vec<Word> = tokens
         .into_iter()
         .filter_map(|t| {
