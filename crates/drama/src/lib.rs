@@ -64,6 +64,18 @@ type FnSpeakStream = unsafe extern "C" fn(
     *mut *mut f32,
     *mut usize,
 ) -> i32;
+type FnSpeakScene = unsafe extern "C" fn(
+    *mut RawEngine,
+    *const c_char,
+    *const *const c_char,
+    *const *const c_char,
+    u32,
+    *const Params,
+    Option<FnChunk>,
+    *mut c_void,
+    *mut *mut f32,
+    *mut usize,
+) -> i32;
 type FnFreeAudio = unsafe extern "C" fn(*mut f32, usize);
 type FnCancel = unsafe extern "C" fn(*mut RawEngine);
 
@@ -79,6 +91,8 @@ struct Api {
     speak: FnSpeak,
     /// Нет у DLL до engine-0.1.2.
     speak_stream: Option<FnSpeakStream>,
+    /// Нет у DLL до engine-0.1.4.
+    speak_scene: Option<FnSpeakScene>,
     free_audio: FnFreeAudio,
     cancel: FnCancel,
 }
@@ -136,6 +150,7 @@ impl DramaEngine {
                 free: sym!("drama_free"),
                 speak: sym!("drama_speak"),
                 speak_stream: lib.get::<FnSpeakStream>(b"drama_speak_stream\0").ok().map(|s| *s),
+                speak_scene: lib.get::<FnSpeakScene>(b"drama_speak_scene\0").ok().map(|s| *s),
                 free_audio: sym!("drama_free_audio"),
                 cancel: sym!("drama_cancel"),
             }
@@ -202,6 +217,47 @@ impl DramaEngine {
         let user = &on_chunk as *const &(dyn Fn(&[f32]) + Sync) as *mut c_void;
         let code = unsafe {
             stream(self.raw, t.as_ptr(), w.as_ptr(), r.as_ptr(), params, Some(chunk_trampoline), user, &mut ptr, &mut len)
+        };
+        self.take_audio(code, ptr, len)
+    }
+
+    /// Говорит ли DLL сцену из нескольких голосов одной генерацией (`speak_scene`).
+    pub fn supports_scene(&self) -> bool {
+        self.api.speak_scene.is_some()
+    }
+
+    /// Сцена из нескольких голосов одной генерацией: каждая реплика `text` начинается с `<|speaker:N|>`, голос N —
+    /// `voices[N]` (реф и его точный транскрипт), не больше 16. Модель слышит все прошлые реплики, поэтому сцена звучит
+    /// одним разговором; `params.max_new` — кадры всей сцены. `on_chunk` — как у `speak_stream`.
+    pub fn speak_scene(
+        &self,
+        text: &str,
+        voices: &[(&Path, &str)],
+        params: &Params,
+        on_chunk: &(dyn Fn(&[f32]) + Sync),
+    ) -> Result<Vec<f32>, DramaError> {
+        let scene = self.api.speak_scene.ok_or_else(|| DramaError::Engine("drama_speak_scene is missing in this DLL (engine-0.1.4+)".into()))?;
+        let t = cstring(text, "text")?;
+        let wavs = voices.iter().map(|(w, _)| cstring(&w.to_string_lossy(), "ref_wav")).collect::<Result<Vec<_>, _>>()?;
+        let texts = voices.iter().map(|(_, r)| cstring(r, "ref_text")).collect::<Result<Vec<_>, _>>()?;
+        let wav_ptrs: Vec<*const c_char> = wavs.iter().map(|c| c.as_ptr()).collect();
+        let text_ptrs: Vec<*const c_char> = texts.iter().map(|c| c.as_ptr()).collect();
+        let mut ptr: *mut f32 = std::ptr::null_mut();
+        let mut len = 0usize;
+        let user = &on_chunk as *const &(dyn Fn(&[f32]) + Sync) as *mut c_void;
+        let code = unsafe {
+            scene(
+                self.raw,
+                t.as_ptr(),
+                wav_ptrs.as_ptr(),
+                text_ptrs.as_ptr(),
+                voices.len() as u32,
+                params,
+                Some(chunk_trampoline),
+                user,
+                &mut ptr,
+                &mut len,
+            )
         };
         self.take_audio(code, ptr, len)
     }
