@@ -3698,6 +3698,19 @@ function Editor() {
               <option value="autocast">{t("voice.autocast")}</option>
               <option value="voice">{t("voice.pack")}</option>
             </select>
+            {p.audio.voice.mode === "clone" && (
+              <label className="mt-2 block">
+                <span className="text-[10px] text-[var(--color-muted)]">{t("voice.emoRef")}</span>
+                <select aria-label={t("voice.emoRef")} value={p.audio.voice.emo_ref == null ? "default" : p.audio.voice.emo_ref ? "on" : "off"}
+                  onChange={(e) => branch("emo_ref", { value: e.target.value })}
+                  title={t("voice.emoRefHint")}
+                  className="mt-1 block w-[200px] max-w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 focus:border-[var(--color-accent)] focus:outline-none transition-colors">
+                  <option value="default">{t("voice.emoRefDefault")}</option>
+                  <option value="on">{t("voice.emoRefOn")}</option>
+                  <option value="off">{t("voice.emoRefOff")}</option>
+                </select>
+              </label>
+            )}
             <VoiceRecorder voiceList={voiceList} onVoices={setVoiceList}
               onDone={(nm) => branch("recast", { voice_mode: "voice", voice_name: nm })} />
             {(() => {

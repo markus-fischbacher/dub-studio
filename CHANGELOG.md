@@ -4,6 +4,16 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
+## Next
+
+### Added
+
+- **The emotion of the original, per project** ([#44](https://github.com/timoncool/dub-studio/issues/44)): with the cloned voice, the editor's voice section chooses it for this project: in every line (each line is cloned from its own piece of the original, so shouting and whispering carry over, but the timbre can shift from line to line), one voice per speaker (every line from the speaker's one reference, a steady voice for a narrator or a lecture), or as Settings - Quality says. Agents set it with `voice_emotion_set`.
+
+### Fixed
+
+- **Whisper no longer writes over the silence at the end of a file** ([#45](https://github.com/timoncool/dub-studio/issues/45)): words lying wholly in a silence of the recording (at least 0.3 s, 30 dB under its speech) are dropped, and a word's end stops where the speech does, so "subscribe to the channel" over a file's quiet tail is gone and the last line ends with its voice; the check of the voiced lines by ear reads them the same way.
+
 ## 2026-10-21 — 4.4.0
 
 ### Changed

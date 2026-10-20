@@ -426,7 +426,8 @@ without it they answer that the window is not open, and everything else still wo
 - **what the project makes**: `project_mode_set`, `audio_output_set`,
   `subtitles_content_set`, `subtitles_burn_set`, `subtitles_position_set`,
   `translation_target_set`, `translation_style_set`, `rewrite_set`, `voice_set`,
-  `gain_set`, `loudness_set` (even out loudness, on by default), `voiceover_gain_set`, `original_track_set`.
+  `voice_emotion_set` (cloned voices: each line from its own piece of the original, or one steady
+  voice per speaker for a narrator), `gain_set`, `loudness_set` (even out loudness, on by default), `voiceover_gain_set`, `original_track_set`.
 - **subtitles, titles, blur**: `caption_style_set` (all lines or one), `caption_preset_set`,
   `title_add`, `title_update`, `titles_delete`, `blur_add`, `blur_update`, `blurs_delete`,
   `blur_enable`.

@@ -45,6 +45,20 @@ impl Parsed {
         self.suspects.append(&mut other.suspects);
     }
 
+    /// A word lying wholly in a silence of the recording is not speech, and a word's end runs no further
+    /// than the speech before a silence.
+    fn drop_in_silence(&mut self, silences: &[(f64, f64)]) {
+        trim_words_to_speech(&mut self.words, silences);
+        for s in &mut self.suspects {
+            trim_words_to_speech(&mut s.words, silences);
+            if let (Some(a), Some(b)) = (s.words.first(), s.words.iter().map(|w| w.end).reduce(f64::max)) {
+                s.start = a.start;
+                s.end = b;
+            }
+        }
+        self.suspects.retain(|s| !s.words.is_empty());
+    }
+
     /// Сегменты дубляжа: обычная сегментация настоящих слов + кандидаты отдельными сегментами, по времени.
     fn into_segments(self) -> Vec<Segment> {
         let mut out = segment_words(&self.words, SEG_MAX_GAP, SEG_MAX_DUR);
@@ -111,6 +125,80 @@ fn quietest_near(samples: &[f32], sr: usize, nominal: usize, search_secs: f64) -
     best.1
 }
 
+const SILENCE_MIN_SECS: f64 = 0.3;
+const SILENCE_BELOW_SPEECH_DB: f64 = 30.0;
+const SILENCE_EDGE_SECS: f64 = 0.02;
+
+/// Silences of at least SILENCE_MIN_SECS, as (start, end) seconds: 25 ms frames quieter than the
+/// recording's speech level (its 90th-percentile frame) by SILENCE_BELOW_SPEECH_DB, so a quiet
+/// recording keeps its speech.
+fn silences(samples: &[f32], sr: usize) -> Vec<(f64, f64)> {
+    let frame = sr / 40;
+    if frame == 0 || samples.len() < frame {
+        return Vec::new();
+    }
+    let db: Vec<f64> = samples
+        .chunks_exact(frame)
+        .map(|c| {
+            let ms = c.iter().map(|&x| (x as f64) * (x as f64)).sum::<f64>() / frame as f64;
+            10.0 * ms.max(1e-12).log10()
+        })
+        .collect();
+    let mut sorted = db.clone();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let speech = sorted[(sorted.len() * 9 / 10).min(sorted.len() - 1)];
+    let threshold = speech - SILENCE_BELOW_SPEECH_DB;
+    let secs = frame as f64 / sr as f64;
+    let mut out = Vec::new();
+    let mut from: Option<usize> = None;
+    for (i, &d) in db.iter().chain(std::iter::once(&f64::MAX)).enumerate() {
+        match (d < threshold, from) {
+            (true, None) => from = Some(i),
+            (false, Some(a)) => {
+                if (i - a) as f64 * secs >= SILENCE_MIN_SECS {
+                    out.push((a as f64 * secs, (i as f64 * secs).min(samples.len() as f64 / sr as f64)));
+                }
+                from = None;
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn trim_words_to_speech(words: &mut Vec<Word>, silences: &[(f64, f64)]) {
+    words.retain(|w| !silences.iter().any(|&(a, b)| w.start >= a - SILENCE_EDGE_SECS && w.end <= b + SILENCE_EDGE_SECS));
+    for w in words.iter_mut() {
+        if let Some(&(a, _)) = silences.iter().find(|&&(a, b)| w.start < a && w.end > a && w.end <= b + SILENCE_EDGE_SECS) {
+            w.end = a.max(w.start);
+        }
+    }
+}
+
+fn silences_of(wav: &Path) -> Result<Vec<(f64, f64)>, AsrError> {
+    let (samples, _) = load_wav_16k_mono(wav)?;
+    Ok(silences(&samples, TARGET_SR as usize))
+}
+
+/// A segment's text without its words that lie in a silence; a segment without word times keeps its text.
+fn spoken_text(seg: &serde_json::Value, silences: &[(f64, f64)]) -> Option<String> {
+    let text = seg.get("text").and_then(|t| t.as_str())?;
+    let Some(arr) = seg.get("words").and_then(|w| w.as_array()).filter(|a| !a.is_empty()) else {
+        return Some(text.to_string());
+    };
+    let mut words: Vec<Word> = arr
+        .iter()
+        .filter_map(|w| {
+            let word = w.get("word").or_else(|| w.get("text")).and_then(|x| x.as_str())?.trim().to_string();
+            let start = w.get("start").and_then(|x| x.as_f64()).unwrap_or(0.0);
+            let end = w.get("end").and_then(|x| x.as_f64()).unwrap_or(start).max(start);
+            (!word.is_empty()).then_some(Word { word, start, end })
+        })
+        .collect();
+    trim_words_to_speech(&mut words, silences);
+    (!words.is_empty()).then(|| words.iter().map(|w| w.word.as_str()).collect::<Vec<_>>().join(" "))
+}
+
 /// Движок Whisper (standalone faster-whisper). Держит параметры запуска; модель грузится сабпроцессом
 /// на каждый вызов (бинарь — отдельный процесс, состояние между вызовами не держим).
 ///
@@ -161,10 +249,9 @@ impl WhisperAsr {
     /// длинный — параллельные окна (N сабпроцессов whisper-faster на CPU-ядра, см. run_words_windowed).
     fn run_words_auto(&self, wav: &Path, lang: &str) -> Result<Parsed, AsrError> {
         let dur = wav_duration_secs(wav).unwrap_or(0.0);
-        if dur < PAR_MIN_DUR {
-            return self.run_words(wav, lang, None);
-        }
-        self.run_words_windowed(wav, lang)
+        let mut parsed = if dur < PAR_MIN_DUR { self.run_words(wav, lang, None)? } else { self.run_words_windowed(wav, lang)? };
+        parsed.drop_in_silence(&silences_of(wav)?);
+        Ok(parsed)
     }
 
     /// ПАРАЛЛЕЛЬНЫЙ оконный прогон длинного файла (PARALLEL_FINDINGS §1-2). Наш whisper-faster.exe
@@ -475,15 +562,17 @@ impl AsrEngine for WhisperAsr {
         let out = batch
             .jsons
             .into_iter()
-            .map(|j| {
+            .zip(files)
+            .map(|(j, file)| {
                 let v: serde_json::Value = serde_json::from_str(&j?).map_err(|e| AsrError::Io(format!("the whisper answer is not JSON: {e}")))?;
                 let segs = v
                     .get("segments")
                     .and_then(serde_json::Value::as_array)
                     .ok_or_else(|| AsrError::Io("the whisper answer has no segments".to_string()))?;
+                let silent = silences_of(file)?;
                 Ok(segs
                     .iter()
-                    .filter_map(|s| s.get("text").and_then(|t| t.as_str()))
+                    .filter_map(|s| spoken_text(s, &silent))
                     .filter(|t| !hallucination_kind(t, HallucinationRules::Whisper).is_some_and(|k| k.is_strong()))
                     .collect::<Vec<_>>()
                     .join(" ")
@@ -508,7 +597,12 @@ impl AsrEngine for WhisperAsr {
         let out = batch
             .jsons
             .into_iter()
-            .map(|j| j.and_then(|txt| parse_whisper_json(&txt)).map(|p| p.into_segments().into_iter().flat_map(|s| s.words).collect()))
+            .zip(files)
+            .map(|(j, file)| {
+                let mut parsed = parse_whisper_json(&j?)?;
+                parsed.drop_in_silence(&silences_of(file)?);
+                Ok(parsed.into_segments().into_iter().flat_map(|s| s.words).collect())
+            })
             .collect();
         let _ = std::fs::remove_dir_all(&batch.out_dir);
         out
@@ -633,6 +727,36 @@ fn parse_whisper_json(txt: &str) -> Result<Parsed, AsrError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tone(secs: f64, amp: f32) -> Vec<f32> {
+        (0..(secs * 16000.0) as usize).map(|i| amp * (i as f32 * 0.07).sin()).collect()
+    }
+
+    #[test]
+    fn words_over_the_trailing_silence_are_dropped() {
+        let mut samples = tone(2.0, 0.3);
+        samples.extend(vec![0.0; 16000]);
+        let silent = silences(&samples, 16000);
+        assert_eq!(silent.len(), 1);
+        assert!((silent[0].0 - 2.0).abs() < 0.03 && (silent[0].1 - 3.0).abs() < 0.03, "{silent:?}");
+        let w = |word: &str, start: f64, end: f64| Word { word: word.into(), start, end };
+        let mut parsed = Parsed {
+            words: vec![w("check", 1.0, 1.5), w("out.", 1.5, 2.4), w("subscribe", 2.2, 2.6), w("now", 2.6, 2.95)],
+            suspects: vec![],
+        };
+        parsed.drop_in_silence(&silent);
+        let kept: Vec<&str> = parsed.words.iter().map(|w| w.word.as_str()).collect();
+        assert_eq!(kept, ["check", "out."]);
+        assert!((parsed.words[1].end - silent[0].0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_quiet_recording_keeps_its_speech() {
+        let mut samples = tone(2.0, 0.005);
+        samples.extend(tone(0.2, 0.0005));
+        samples.extend(tone(2.0, 0.005));
+        assert!(silences(&samples, 16000).is_empty());
+    }
 
     #[test]
     fn parses_word_timestamps() {

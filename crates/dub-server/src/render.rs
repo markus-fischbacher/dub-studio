@@ -1581,11 +1581,13 @@ fn build_dub_pass(
     // спикера (ref_of). Файл — свой на сегмент (по id), не конфликтует с seg_*.wav дубляжа. ref_text для
     // эмоц-рефа = src_text ЭТОГО же сегмента (совпадает с аудио по построению, перетранскрипция не нужна).
     // Порт коротких/1-спикер путей неизменен: при паке и на грязных/коротких репликах ведём себя как раньше.
-    let emo_ref_on = crate::models::load_selection(&paths.models_root)
-        .get("emo_ref_on")
-        .and_then(|v| v.as_str())
-        .map(|v| v != "0")
-        .unwrap_or(true);
+    let emo_ref_on = proj.audio.voice.emo_ref.unwrap_or_else(|| {
+        crate::models::load_selection(&paths.models_root)
+            .get("emo_ref_on")
+            .and_then(|v| v.as_str())
+            .map(|v| v != "0")
+            .unwrap_or(true)
+    });
     let emo_enabled = emo_ref_on;
     let emo_eligible = |s: &dub_core::Segment| -> bool {
         // пак — фикс-голос юзера, эмоцию источника не переносим; короткая реплика — мало тембра;

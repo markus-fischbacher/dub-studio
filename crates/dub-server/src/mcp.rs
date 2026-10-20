@@ -992,6 +992,7 @@ const PATCH_OPS: &[(&str, &str)] = &[
     ("translate_style", "translation_style_set"),
     ("rewrite", "rewrite_set"),
     ("recast", "voice_set"),
+    ("emo_ref", "voice_emotion_set"),
     ("gain", "gain_set"),
     ("loudness", "loudness_set"),
     ("voiceover_gain", "voiceover_gain_set"),
@@ -1956,6 +1957,15 @@ fn tools() -> &'static [Tool] {
                 call: |args| {
                     text(args, "voice_mode")?;
                     edit(args, "recast")
+                },
+            },
+            Tool {
+                name: "voice_emotion_set",
+                description: "Emotion of the original for this project's cloned voices: on - every line is cloned from its own piece of the original, so shouting and whispering carry over but the timbre can shift from line to line; off - every line from the speaker's one reference, one steady voice (a narrator, a lecture); default - as Settings - Quality says. Every line becomes dirty.",
+                schema: || object(json!({ "pid": pid(), "value": { "type": "string", "enum": ["on", "off", "default"] }, "response_format": detail() }), &["pid", "value"]),
+                call: |args| {
+                    text(args, "value")?;
+                    edit(args, "emo_ref")
                 },
             },
             Tool {
