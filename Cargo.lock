@@ -1054,6 +1054,7 @@ dependencies = [
 name = "dub-tcpp"
 version = "2.0.0"
 dependencies = [
+ "hound",
  "libloading 0.9.0",
 ]
 

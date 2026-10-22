@@ -1152,6 +1152,27 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
     }
 
+    /// A model hears a language named by its plain code: DUB_TCPP_ENGINE_DIR (an engine), DUB_TCPP_LANG_MODELS
+    /// (models separated by `;`), DUB_TCPP_LANG_WAV (16 kHz mono speech) and DUB_TCPP_LANG (its language, `ru`).
+    #[test]
+    #[ignore]
+    fn a_plain_language_code_reaches_every_model() {
+        let (Ok(dir), Ok(models), Ok(wav), Ok(lang)) =
+            (std::env::var("DUB_TCPP_ENGINE_DIR"), std::env::var("DUB_TCPP_LANG_MODELS"), std::env::var("DUB_TCPP_LANG_WAV"), std::env::var("DUB_TCPP_LANG"))
+        else {
+            return;
+        };
+        let mut r = hound::WavReader::open(&wav).unwrap();
+        let pcm: Vec<f32> = r.samples::<i16>().map(|s| s.unwrap() as f32 / 32768.0).collect();
+        for model in models.split(';') {
+            let mut asr = TcppAsr::load(Path::new(&dir), Path::new(model)).unwrap();
+            let named = asr.language(&lang).unwrap().map(|c| c.into_string().unwrap());
+            let words = asr.words(&pcm, &lang).unwrap_or_else(|e| panic!("{model} with {lang:?} (sent {named:?}): {e}"));
+            println!("[OK] {model}: {lang:?} sent as {named:?}, {} words: {}", words.len(), words.iter().map(|w| w.word.as_str()).collect::<Vec<_>>().join(" "));
+            assert!(!words.is_empty(), "{model}");
+        }
+    }
+
     #[test]
     fn every_build_has_its_own_folder_and_a_pinned_download() {
         let mut dirs: Vec<&str> = Build::ALL.iter().map(|b| b.dir()).collect();
