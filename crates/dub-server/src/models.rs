@@ -240,6 +240,13 @@ pub fn tcpp_build(mroot: &Path) -> dub_asr::tcpp::Build {
     if stage_backend(mroot, "asr_backend") == "cpu" { dub_asr::tcpp::Build::Cpu } else { dub_asr::tcpp::Build::Cuda }
 }
 
+/// Why voice separation cannot run here as set: its GPU build without a usable card, or a processor without the
+/// floor the GPU build's ggml-cpu library is built on (the processor build has none).
+pub fn sep_unavailable(mroot: &Path) -> Option<String> {
+    gpu_stage_unavailable(mroot, "sep_backend", &t!("stage-name-sep"))
+        .or_else(|| (stage_backend(mroot, "sep_backend") == "gpu").then(|| crate::hw::cpu_floor("BSRoformer")).flatten())
+}
+
 /// Why a local stage set to «GPU (CUDA)» cannot run on this machine: its CUDA build would fall back to the processor
 /// on its own, so the stage stops before it starts and names the reason. None — the stage is not on the GPU or the
 /// card runs the CUDA 13 builds. `stage` is the stage's name for the message.
@@ -779,6 +786,9 @@ pub fn qwen_quant(tts: &str) -> Option<&'static str> {
 pub fn qwen_unavailable() -> Option<String> {
     if cfg!(not(windows)) {
         return Some(t!("qwen-no-linux"));
+    }
+    if let Some(why) = crate::hw::cpu_floor("Qwen3-TTS") {
+        return Some(why);
     }
     let gpu = crate::hw::gpu_report();
     if gpu.cuda13_ok {

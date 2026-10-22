@@ -1497,7 +1497,7 @@ fn build_dub_pass(
             );
             (cached_voc, Some(cached_inst))
         } else if paths.bsroformer_cli.is_file() && paths.bsroformer_model.is_file() {
-            if let Some(why) = crate::models::gpu_stage_unavailable(&paths.models_root, "sep_backend", &t!("stage-name-sep")) {
+            if let Some(why) = crate::models::sep_unavailable(&paths.models_root) {
                 return Err(why);
             }
             emit(progress, "separate", &t!("atomic-separating", model = "Mel-Band Roformer voc_fv6-Q8_0"),

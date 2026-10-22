@@ -36,9 +36,22 @@ pub enum Build {
 /// (every Intel since Haswell, every AMD since Zen). A processor without them gets this answer, naming `engine`, instead of
 /// a crash on the engine's first call. Other architectures pass.
 pub fn cpu_floor(engine: &str) -> Result<(), String> {
+    let missing = cpu_floor_missing();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{engine} needs a processor with AVX2, FMA, F16C and BMI2 (Intel since 2013, AMD since 2017), and this one has not got {}",
+        missing.join(", ")
+    ))
+}
+
+/// What this computer's processor lacks of the x86-64 floor of [`cpu_floor`]: nothing on one that has it and on other
+/// architectures.
+pub fn cpu_floor_missing() -> Vec<&'static str> {
     #[cfg(target_arch = "x86_64")]
     {
-        let missing: Vec<&str> = [
+        [
             ("AVX2", std::arch::is_x86_feature_detected!("avx2")),
             ("FMA", std::arch::is_x86_feature_detected!("fma")),
             ("F16C", std::arch::is_x86_feature_detected!("f16c")),
@@ -47,17 +60,10 @@ pub fn cpu_floor(engine: &str) -> Result<(), String> {
         .into_iter()
         .filter(|(_, has)| !has)
         .map(|(name, _)| name)
-        .collect();
-        if !missing.is_empty() {
-            return Err(format!(
-                "{engine} needs a processor with AVX2, FMA, F16C and BMI2 (Intel since 2013, AMD since 2017), and this one has not got {}",
-                missing.join(", ")
-            ));
-        }
+        .collect()
     }
     #[cfg(not(target_arch = "x86_64"))]
-    let _ = engine;
-    Ok(())
+    Vec::new()
 }
 
 impl Build {

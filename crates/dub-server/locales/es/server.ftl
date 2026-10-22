@@ -958,6 +958,7 @@ render-drama-missing = Drama 3 está elegida pero no descargada por completo: de
 render-drama-load-failed = cargando Drama 3: { $error }
 render-loading-drama = cargando Drama 3
 qwen-needs-cuda = La voz Qwen3-TTS necesita una tarjeta NVIDIA con CUDA y no se encontró ninguna ({ $card }). Elige Higgs.
+cpu-floor-missing = { $engine } necesita un procesador con AVX2, FMA, F16C y BMI2 (Intel desde 2013, AMD desde 2017), y a este le falta { $missing }
 stage-name-sep = Separación de la voz
 stage-name-asr = Reconocimiento de voz (Parakeet)
 stage-needs-cuda = { $stage }: los ajustes eligen «GPU (CUDA)», pero { $why }. Elige «CPU» o «Auto» para esta etapa en los ajustes.

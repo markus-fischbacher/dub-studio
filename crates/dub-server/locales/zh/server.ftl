@@ -754,6 +754,7 @@ render-drama-missing = 已选择 Drama 3，但尚未完整下载：请在“模�
 render-drama-load-failed = 加载 Drama 3：{ $error }
 render-loading-drama = 正在加载 Drama 3
 qwen-needs-cuda = Qwen3-TTS 配音需要支持 CUDA 的 NVIDIA 显卡，但未找到（{ $card }）。请选择 Higgs。
+cpu-floor-missing = { $engine } 需要支持 AVX2、FMA、F16C 和 BMI2 的处理器（Intel 2013 年起，AMD 2017 年起），而此处理器缺少 { $missing }
 stage-name-sep = 人声分离
 stage-name-asr = 语音识别（Parakeet）
 stage-needs-cuda = { $stage }：设置中选择了「GPU (CUDA)」，但{ $why }。请在设置中为此阶段选择「CPU」或「自动」。

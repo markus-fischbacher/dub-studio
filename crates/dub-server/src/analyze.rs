@@ -948,7 +948,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         let stems = paths.work_dir.join("stems");
         let cached_voc = stems.join("vocals.wav");
         if !cached_voc.is_file() {
-            if let Some(why) = crate::models::gpu_stage_unavailable(&paths.models_root, "sep_backend", &t!("stage-name-sep")) {
+            if let Some(why) = crate::models::sep_unavailable(&paths.models_root) {
                 return Err(why);
             }
         }

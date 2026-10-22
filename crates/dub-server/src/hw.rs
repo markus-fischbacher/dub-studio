@@ -185,6 +185,13 @@ pub fn cuda13_verdict(compute: (u32, u32), cuda_driver: u32) -> Result<(), &'sta
     }
 }
 
+/// Why this processor cannot run `engine`, built on the studios' x86-64 floor (AVX2, FMA, F16C, BMI2), in the window's
+/// language; None — it can.
+pub fn cpu_floor(engine: &str) -> Option<String> {
+    let missing = dub_asr::tcpp::cpu_floor_missing();
+    (!missing.is_empty()).then(|| t!("cpu-floor-missing", engine = engine.to_string(), missing = missing.join(", ")))
+}
+
 /// Отчёт о видеокарте (считается один раз за процесс: драйвер не меняется без перезапуска приложения).
 pub fn gpu_report() -> GpuReport {
     static R: OnceLock<GpuReport> = OnceLock::new();
