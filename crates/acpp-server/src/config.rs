@@ -1,0 +1,174 @@
+//! The server's config file (app/server/README.md, «Config» and «Model entries»): what the studio writes before it
+//! starts the process.
+
+use serde::Serialize;
+use serde_json::{json, Map, Value};
+use std::path::{Path, PathBuf};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Backend {
+    Cuda,
+    Cpu,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    Offline,
+    Streaming,
+}
+
+/// One model of the server. `id` is what a request names; family, task and mode are always written out, as the server
+/// guide asks.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ModelEntry {
+    pub id: String,
+    pub family: String,
+    pub path: PathBuf,
+    pub task: String,
+    pub mode: Mode,
+    #[serde(skip_serializing_if = "Map::is_empty")]
+    pub load_options: Map<String, Value>,
+    #[serde(skip_serializing_if = "Map::is_empty")]
+    pub session_options: Map<String, Value>,
+    #[serde(skip_serializing_if = "Map::is_empty")]
+    pub default_request_options: Map<String, Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub busy_timeout_ms: Option<u64>,
+    /// The rate of the PCM this model's speech deltas carry; the deltas themselves do not say it.
+    #[serde(skip)]
+    pub output_rate: Option<u32>,
+}
+
+fn options(v: Value) -> Map<String, Value> {
+    match v {
+        Value::Object(m) => m,
+        _ => Map::new(),
+    }
+}
+
+impl ModelEntry {
+    fn new(id: &str, family: &str, path: &Path, task: &str, mode: Mode) -> ModelEntry {
+        ModelEntry {
+            id: id.to_string(),
+            family: family.to_string(),
+            path: path.to_path_buf(),
+            task: task.to_string(),
+            mode,
+            load_options: Map::new(),
+            session_options: Map::new(),
+            default_request_options: Map::new(),
+            busy_timeout_ms: None,
+            output_rate: None,
+        }
+    }
+
+    /// Higgs Audio v3 voice cloning (docs/models/higgs_audio_tts.md: route `clon`), streamed; its codec is 24 kHz mono.
+    pub fn higgs_tts(id: &str, gguf: &Path) -> ModelEntry {
+        ModelEntry { output_rate: Some(24_000), ..ModelEntry::new(id, "higgs_audio_tts", gguf, "clon", Mode::Streaming) }
+    }
+
+    /// Parakeet-TDT recognition of a whole file; long files switch to long-form windows past 30 s.
+    pub fn parakeet_tdt(id: &str, gguf: &Path) -> ModelEntry {
+        ModelEntry {
+            session_options: options(json!({ "parakeet_tdt.offline_mode": "auto" })),
+            ..ModelEntry::new(id, "parakeet_tdt", gguf, "asr", Mode::Offline)
+        }
+    }
+
+    /// CrisperWhisper recognition of a whole file with word timestamps, in the cleaned (`intended`) transcription:
+    /// `verbatim` writes numbers as words. `model` is the model's folder or GGUF.
+    pub fn crisperwhisper(id: &str, model: &Path) -> ModelEntry {
+        ModelEntry {
+            default_request_options: options(json!({ "transcription_mode": "intended", "return_timestamps": true })),
+            ..ModelEntry::new(id, "crisperwhisper", model, "asr", Mode::Offline)
+        }
+    }
+}
+
+/// The whole config. `port` is chosen by [`crate::Server::start`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct ServerConfig {
+    pub exe: PathBuf,
+    pub backend: Backend,
+    pub device: u32,
+    pub threads: u32,
+    pub models: Vec<ModelEntry>,
+    /// Folder of the config file and the server's log.
+    pub data_dir: PathBuf,
+    /// The server's trace log (`--log --log-file`): every stage's timings, which slow the run; an error reaches the
+    /// client in the answer either way.
+    pub log: bool,
+}
+
+impl ServerConfig {
+    pub(crate) fn json(&self, port: u16) -> Value {
+        json!({
+            "host": "127.0.0.1",
+            "port": port,
+            "backend": self.backend,
+            "device": self.device,
+            "threads": self.threads.max(1),
+            "lazy_load": true,
+            "max_loaded_models": 0,
+            "log_request_body": false,
+            "models": self.models,
+        })
+    }
+
+    pub(crate) fn model(&self, id: &str) -> Option<&ModelEntry> {
+        self.models.iter().find(|m| m.id == id)
+    }
+
+    pub fn config_path(&self) -> PathBuf {
+        self.data_dir.join("audiocpp_server.json")
+    }
+
+    pub fn log_path(&self) -> PathBuf {
+        self.data_dir.join("audiocpp_server.log")
+    }
+
+    /// The server's own output (its start, its errors), kept whether or not the trace log is on.
+    pub fn output_path(&self) -> PathBuf {
+        self.data_dir.join("audiocpp_server.out")
+    }
+
+    /// Where an error message takes the server's last words from.
+    pub(crate) fn tail_path(&self) -> PathBuf {
+        if self.log { self.log_path() } else { self.output_path() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_config_names_every_model_as_the_server_guide_asks() {
+        let cfg = ServerConfig {
+            exe: PathBuf::from("audiocpp_server.exe"),
+            backend: Backend::Cuda,
+            device: 0,
+            threads: 8,
+            models: vec![
+                ModelEntry::higgs_tts("higgs", Path::new("m/higgs-q8_0/q8_0.gguf")),
+                ModelEntry::parakeet_tdt("parakeet", Path::new("m/asr-gguf-parakeet-v3/parakeet-tdt-0.6b-v3-Q8_0.gguf")),
+                ModelEntry::crisperwhisper("crisperwhisper", Path::new("m/crisperwhisper2-turbo")),
+            ],
+            data_dir: PathBuf::from("d"),
+            log: false,
+        };
+        let v = cfg.json(4321);
+        assert_eq!(v["port"], 4321);
+        assert_eq!(v["backend"], "cuda");
+        assert_eq!(v["lazy_load"], true);
+        let m = v["models"].as_array().unwrap();
+        assert_eq!((m[0]["family"].as_str(), m[0]["task"].as_str(), m[0]["mode"].as_str()), (Some("higgs_audio_tts"), Some("clon"), Some("streaming")));
+        assert!(m[0].get("output_rate").is_none(), "the rate is the client's, not a config key");
+        assert_eq!(m[1]["session_options"]["parakeet_tdt.offline_mode"], "auto");
+        assert_eq!(m[2]["default_request_options"]["transcription_mode"], "intended");
+        assert_eq!(m[2]["default_request_options"]["return_timestamps"], true);
+        assert!(m[1].get("default_request_options").is_none());
+    }
+}
