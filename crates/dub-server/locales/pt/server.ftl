@@ -561,6 +561,7 @@ render-engine-stuck = a síntese não cancela após { $seconds } s; a renderiza�
 render-higgs-load-failed = carregando a DLL do Higgs: { $error }
 render-higgs-gpu-old = A voz local Higgs não roda em { $card }: precisa de uma NVIDIA a partir da Turing (compute capability { $min }, GTX 16 e RTX 20 ou mais novas). Escolha a voz "Google · direto" ou "Pelo OpenRouter".
 render-higgs-driver-old = A voz local Higgs precisa do driver NVIDIA { $min } ou mais novo, e este é mais antigo: { $card }. Atualize o driver ou escolha a voz "Google · direto" ou "Pelo OpenRouter".
+render-higgs-engine-failed = O Higgs não falou nenhuma fala: o motor falhou antes de qualquer som ({ $error })
 render-higgs-no-gpu = A voz local Higgs precisa de uma placa NVIDIA com CUDA, e nenhuma foi encontrada ({ $card }). Escolha a voz "Google · direto" ou "Pelo OpenRouter".
 render-defect-runaway = descontrolada
 render-defect-cutoff = cortada

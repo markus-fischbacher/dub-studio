@@ -529,6 +529,10 @@ const GUARD_GRACE_SECS: u64 = 20;
 /// Префикс ошибки «движок застрял в DLL после cancel»: вызывающий НЕ ретраит (это был бы конкурентный FFI —
 /// гонка), а ОБРЫВАЕТ рендер. Единственный воркер разблокируется (ошибка), состояние движка не портим.
 const ENGINE_STUCK: &str = "ENGINE_STUCK";
+/// Prefix of «the engine has not spoken a single phrase of this render and failed before any sound» (its model did
+/// not load, its server died): the attempts ladder stops with the engine's own error instead of retrying it as a bad
+/// take.
+const ENGINE_FAILED: &str = "ENGINE_FAILED";
 
 /// voice_clone с ЖЁСТКИМ таймаутом. Higgs (прекомпил-DLL) СТОХАСТИЧЕСКИ виснет на редких сегментах; in-process
 /// FFI не убить, но есть C-ABI `cancel()`. Гоним синтез в отдельном потоке с таймаутом. По таймауту: cancel()
@@ -601,7 +605,12 @@ fn load_higgs(paths: &RenderPaths) -> Result<HiggsServer, String> {
     let backend = crate::acpp::backend(if paths.higgs_backend == "cpu" { "cpu" } else { "gpu" });
     let server = crate::acpp::server(&paths.repo_root, &paths.models_root, backend, crate::acpp::HIGGS)
         .map_err(|e| t!("render-higgs-load-failed", error = e))?;
-    Ok(HiggsServer { server, cancel: Arc::new(AtomicBool::new(false)), running: Arc::new(AtomicBool::new(false)) })
+    Ok(HiggsServer {
+        server,
+        cancel: Arc::new(AtomicBool::new(false)),
+        running: Arc::new(AtomicBool::new(false)),
+        spoke: AtomicBool::new(false),
+    })
 }
 
 /// The longest wait for the next piece of a Higgs phrase; the first one also waits for the model to load.
@@ -614,6 +623,8 @@ pub struct HiggsServer {
     server: Arc<acpp_server::Server>,
     cancel: Arc<AtomicBool>,
     running: Arc<AtomicBool>,
+    /// A phrase of this render came out: from then on a failed phrase is that phrase's, not the engine's.
+    spoke: AtomicBool,
 }
 
 /// Done with Higgs: its weights leave the card (recognition and the next stages take it), the server stays.
@@ -640,14 +651,28 @@ impl HiggsServer {
         };
         self.cancel.store(false, Ordering::SeqCst);
         self.running.store(true, Ordering::SeqCst);
-        let r = self.server.speech(&req, &self.cancel);
+        let mut samples = Vec::new();
+        let r = self.server.speech_rate(&req.model).and_then(|rate| {
+            self.server
+                .speech_stream(&req, &self.cancel, &mut |d| {
+                    samples.extend_from_slice(d);
+                    acpp_server::Flow::Continue
+                })
+                .map(|_| rate)
+        });
         self.running.store(false, Ordering::SeqCst);
         match r {
-            Ok(sp) => Ok((sp.samples, sp.sample_rate as i32)),
+            Ok(rate) => {
+                self.spoke.store(true, Ordering::SeqCst);
+                Ok((samples, rate as i32))
+            }
             Err(acpp_server::AcppError::Cancelled) => Err(crate::jobs::CANCELLED.to_string()),
             Err(e @ acpp_server::AcppError::Stalled { .. }) => {
                 crate::acpp::stop();
                 Err(crate::acpp::localize(&e))
+            }
+            Err(e) if samples.is_empty() && !self.spoke.load(Ordering::SeqCst) => {
+                Err(format!("{ENGINE_FAILED}: {}", t!("render-higgs-engine-failed", error = crate::acpp::localize(&e))))
             }
             Err(e) => Err(crate::acpp::localize(&e)),
         }
@@ -1077,7 +1102,7 @@ mod drama_params_tests {
 
 /// Ошибка синтеза, после которой лестницу ретраев не продолжают: движок завис или джобу отменили.
 fn synth_abort(e: &str) -> bool {
-    e.starts_with(ENGINE_STUCK) || e == crate::jobs::CANCELLED
+    e.starts_with(ENGINE_STUCK) || e.starts_with(ENGINE_FAILED) || e == crate::jobs::CANCELLED
 }
 
 /// Детект TTS-артефакта «гудение» по сэмплам фразы (in-memory, прямо из voice_clone). Речь на клипе >0.4с

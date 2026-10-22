@@ -438,6 +438,7 @@ render-engine-stuck = 合成超过 { $seconds } 秒仍无法取消；渲染已�
 render-higgs-load-failed = 加载 Higgs DLL：{ $error }
 render-higgs-gpu-old = 本地 Higgs 语音无法在 { $card } 上运行：需要 Turing 及更新的 NVIDIA 显卡（compute capability { $min }，GTX 16、RTX 20 及以上）。请选择“Google · 直连”或“通过 OpenRouter”语音。
 render-higgs-driver-old = 本地 Higgs 语音需要 NVIDIA 驱动 { $min } 或更新，当前驱动更旧：{ $card }。请更新驱动，或选择“Google · 直连”或“通过 OpenRouter”语音。
+render-higgs-engine-failed = Higgs 一句也没有生成：引擎在发出任何声音之前就出错了（{ $error }）
 render-higgs-no-gpu = 本地 Higgs 语音需要支持 CUDA 的 NVIDIA 显卡，但未找到（{ $card }）。请选择“Google · 直连”或“通过 OpenRouter”语音。
 render-defect-runaway = 失控过长
 render-defect-cutoff = 截断

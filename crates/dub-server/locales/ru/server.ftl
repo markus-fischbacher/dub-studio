@@ -582,6 +582,7 @@ render-engine-stuck = синтез не отменяется >{ $seconds }с —
 render-higgs-load-failed = загрузка Higgs DLL: { $error }
 render-higgs-gpu-old = Локальный голос Higgs не запустится на { $card }: ему нужна NVIDIA начиная с Turing (compute capability { $min }, GTX 16 и RTX 20 и новее). Выберите голос «Google · напрямую» или «Через OpenRouter».
 render-higgs-driver-old = Локальному голосу Higgs нужен драйвер NVIDIA { $min } или новее, а стоит старее: { $card }. Обновите драйвер или выберите голос «Google · напрямую» или «Через OpenRouter».
+render-higgs-engine-failed = Higgs не озвучил ни одной фразы: движок ответил ошибкой до первого звука ({ $error })
 render-higgs-no-gpu = Локальному голосу Higgs нужна видеокарта NVIDIA с CUDA, а её не нашлось ({ $card }). Выберите голос «Google · напрямую» или «Через OpenRouter».
 render-defect-runaway = затянулась
 render-defect-cutoff = обрыв
