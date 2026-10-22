@@ -32,6 +32,34 @@ pub enum Build {
     Cpu,
 }
 
+/// Whether this computer's processor runs an engine built with the x86-64 floor of the studios: AVX2, FMA, F16C and BMI2
+/// (every Intel since Haswell, every AMD since Zen). A processor without them gets this answer, naming `engine`, instead of
+/// a crash on the engine's first call. Other architectures pass.
+pub fn cpu_floor(engine: &str) -> Result<(), String> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        let missing: Vec<&str> = [
+            ("AVX2", std::arch::is_x86_feature_detected!("avx2")),
+            ("FMA", std::arch::is_x86_feature_detected!("fma")),
+            ("F16C", std::arch::is_x86_feature_detected!("f16c")),
+            ("BMI2", std::arch::is_x86_feature_detected!("bmi2")),
+        ]
+        .into_iter()
+        .filter(|(_, has)| !has)
+        .map(|(name, _)| name)
+        .collect();
+        if !missing.is_empty() {
+            return Err(format!(
+                "{engine} needs a processor with AVX2, FMA, F16C and BMI2 (Intel since 2013, AMD since 2017), and this one has not got {}",
+                missing.join(", ")
+            ));
+        }
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    let _ = engine;
+    Ok(())
+}
+
 impl Build {
     pub const ALL: [Build; 3] = [Build::Cuda, Build::Vulkan, Build::Cpu];
 
@@ -45,15 +73,10 @@ impl Build {
     }
 
 
-    /// Whether this computer's processor runs the engine: every x86-64 build needs AVX2, FMA, F16C and BMI2 (every Intel
-    /// since Haswell, every AMD since Zen), and a processor without them gets this answer instead of a crash on the first call.
+    /// Whether this computer's processor runs the engine (see [`cpu_floor`]).
     pub fn runs_here(self) -> Result<(), String> {
         let _ = self;
-        #[cfg(target_arch = "x86_64")]
-        if !(std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") && std::arch::is_x86_feature_detected!("f16c") && std::arch::is_x86_feature_detected!("bmi2")) {
-            return Err("transcribe.cpp needs a processor with AVX2, FMA, F16C and BMI2 (Intel since 2013, AMD since 2017), and this one has not got them".into());
-        }
-        Ok(())
+        cpu_floor("transcribe.cpp")
     }
 
     #[cfg(windows)]
