@@ -593,12 +593,14 @@ fn voice_clone_guarded(
 fn load_higgs(paths: &RenderPaths) -> Result<HiggsServer, String> {
     if paths.higgs_backend == "cuda" {
         let gpu = crate::hw::gpu_report();
-        if !gpu.cuda13_ok {
+        if gpu.cuda_build.is_none() {
             let card = gpu.summary().unwrap_or_else(|| "-".to_string());
-            return Err(match gpu.reason {
-                Some("gpu_old") => t!("render-higgs-gpu-old", card = card, min = gpu.min_compute.clone()),
-                Some("driver_old") => t!("render-higgs-driver-old", card = card, min = gpu.min_driver),
-                _ => t!("render-higgs-no-gpu", card = card),
+            let compute = gpu.compute.as_deref().and_then(|c| c.split_once('.')).and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?)));
+            let oldest = crate::hw::CUDA12_OLDEST;
+            return Err(match compute {
+                Some(c) if c < oldest => t!("render-higgs-gpu-old", card = card, min = format!("{}.{}", oldest.0, oldest.1)),
+                Some(_) => t!("render-higgs-driver-old", card = card, min = crate::hw::CUDA12_DRIVER),
+                None => t!("render-higgs-no-gpu", card = card),
             });
         }
     }

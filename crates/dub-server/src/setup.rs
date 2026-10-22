@@ -206,12 +206,48 @@ mod platform {
         files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine-cpu.dll", dest_rel: "models/transcribe-engine-cpu/transcribe_engine.dll", size: 3_558_912, sha256: "64df1c98b5b6da2b77e6102f3c852adcb2e285336fc49085f7ee63cfddc0855c", extract: Extract::None }],
         markers: &[Marker { rel: "models/transcribe-engine-cpu/transcribe_engine.dll", expect: 3_558_912 }],
     };
-    pub const HIGGS_ENGINE: Parts = Parts {
-        size: 129_390_080,
+    // audiocpp_server (fork timoncool/audio.cpp, branch studio, efc92120; model specs inside, AVX2 floor, no AVX-512)
+    // with the VC++ 14.51 libraries beside it. CUDA 13: SASS 7.5-12.0a without PTX, cudart inside, cuBLAS and cuFFT
+    // from cuda-runtime. CUDA 12.9: SASS 5.2-12.0a without PTX, its libraries from cuda12-runtime.
+    pub const AUDIOCPP_SERVER: Parts = Parts {
+        size: 130_925_562,
         files: &[
-            FileSpec { url: "https://github.com/timoncool/Higgs-Ultimate/releases/download/engine-0.2.3-turing/audiocpp_engine.dll", dest_rel: "models/higgs-engine/audiocpp_engine.dll", size: 129_390_080, sha256: "c3608613bd54bdd41c85cc90412d4add67b928b07b32be24f26d91cb9626f46d", extract: Extract::None },
+            FileSpec { url: "https://github.com/timoncool/audio.cpp/releases/download/server-efc92120/audiocpp-server-win-cuda13-x64.zip", dest_rel: "tools/audiocpp/_server.zip", size: 130_925_562, sha256: "d50d4d6a86000b6a99e9d89354a034b61dcc07a79299f0608f6705dc604abbfb", extract: Extract::Flat },
         ],
-        markers: &[Marker { rel: "models/higgs-engine/audiocpp_engine.dll", expect: 129_390_080 }],
+        markers: &[Marker { rel: "tools/audiocpp/audiocpp_server.exe", expect: 0 }],
+    };
+    pub const AUDIOCPP_SERVER_CUDA12: Parts = Parts {
+        size: 177_968_601,
+        files: &[
+            FileSpec { url: "https://github.com/timoncool/audio.cpp/releases/download/server-efc92120/audiocpp-server-win-cuda12-x64.zip", dest_rel: "tools/audiocpp-cuda12/_server.zip", size: 177_968_601, sha256: "db3a50f67948d1d703882efa4a587bc8fe89f1c7d46b1b04e86afd4d5054563e", extract: Extract::Flat },
+        ],
+        markers: &[Marker { rel: "tools/audiocpp-cuda12/audiocpp_server.exe", expect: 0 }],
+    };
+
+    /// The audiocpp_server build of this card.
+    pub fn audiocpp_server() -> &'static Parts {
+        match crate::acpp::build() {
+            crate::hw::CudaBuild::Cuda13 => &AUDIOCPP_SERVER,
+            crate::hw::CudaBuild::Cuda12 => &AUDIOCPP_SERVER_CUDA12,
+        }
+    }
+
+    // NVIDIA CUDA 12.9 runtime for the CUDA 12.9 builds (PyPI wheels: cudart 12.9.79, cuBLAS 12.9.2.10, cuFFT
+    // 11.4.1.4): cudart64_12, cublas64_12, cublasLt64_12, cufft64_11, in their own folder, on PATH only for a card that
+    // takes the CUDA 12 builds.
+    pub const CUDA12_RUNTIME: Parts = Parts {
+        size: 756_821_809,
+        files: &[
+            FileSpec { url: "https://files.pythonhosted.org/packages/59/df/e7c3a360be4f7b93cee39271b792669baeb3846c58a4df6dfcf187a7ffab/nvidia_cuda_runtime_cu12-12.9.79-py3-none-win_amd64.whl", dest_rel: "models/cuda12-runtime/_cudart.whl", size: 3_591_604, sha256: "8e018af8fa02363876860388bd10ccb89eb9ab8fb0aa749aaf58430a9f7c4891", extract: Extract::Libs },
+            FileSpec { url: "https://files.pythonhosted.org/packages/20/e2/fc9a0e985249d873150276d5afb02e39a66817fedbf1a385724393e505ed/nvidia_cublas_cu12-12.9.2.10-py3-none-win_amd64.whl", dest_rel: "models/cuda12-runtime/_cublas.whl", size: 553_162_896, sha256: "623f43027d40d44ceadf0043f002bd25cf353e8f13ce90b9a87057019f560661", extract: Extract::Libs },
+            FileSpec { url: "https://files.pythonhosted.org/packages/20/ee/29955203338515b940bd4f60ffdbc073428f25ef9bfbce44c9a066aedc5c/nvidia_cufft_cu12-11.4.1.4-py3-none-win_amd64.whl", dest_rel: "models/cuda12-runtime/_cufft.whl", size: 200_067_309, sha256: "8e5bfaac795e93f80611f807d42844e8e27e340e0cde270dcb6c65386d795b80", extract: Extract::Libs },
+        ],
+        markers: &[
+            Marker { rel: "models/cuda12-runtime/cudart64_12.dll", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/cublas64_12.dll", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/cublasLt64_12.dll", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/cufft64_11.dll", expect: 0 },
+        ],
     };
 
     // Движок Drama 3 (C ABI форка timoncool/drama-rs, capi), CUDA 13.3, sm 75/80/86/89/90/100/120 без PTX:
@@ -348,6 +384,10 @@ mod platform {
         ],
         markers: &[Marker { rel: "models/higgs-engine/libaudiocpp_engine.so", expect: 136_774_464 }],
     };
+
+    pub fn audiocpp_server() -> &'static Parts {
+        &HIGGS_ENGINE
+    }
 
     // Движок Drama 3 (форк timoncool/drama-rs, capi/build-linux-docker.sh: CUDA 13.3, Ubuntu 22.04, sm 75/80/86/89/90/
     // 100/120): RUNPATH $ORIGIN и ../higgs-engine, где libcudart и libcublas ставит cuda-runtime.
@@ -597,9 +637,9 @@ pub fn manifest() -> Vec<Component> {
             purpose: t!("setup-comp-higgs-engine-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
-            size: platform::HIGGS_ENGINE.size,
-            files: platform::HIGGS_ENGINE.files,
-            markers: platform::HIGGS_ENGINE.markers,
+            size: platform::audiocpp_server().size,
+            files: platform::audiocpp_server().files,
+            markers: platform::audiocpp_server().markers,
             external_url: None,
         },
         Component {
@@ -1137,6 +1177,20 @@ pub fn manifest() -> Vec<Component> {
     // Среда исполнения Visual C++ есть только у Windows-сборок движков.
     if !cfg!(windows) {
         all.retain(|c| c.id != "vcruntime");
+    }
+    #[cfg(windows)]
+    if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 {
+        all.push(Component {
+            id: "cuda12-runtime",
+            name: "CUDA 12.9 runtime (cudart + cuBLAS + cuFFT)".into(),
+            purpose: t!("setup-comp-cuda-runtime-purpose"),
+            requirement: Requirement::Required,
+            delivery: Delivery::Download,
+            size: platform::CUDA12_RUNTIME.size,
+            files: platform::CUDA12_RUNTIME.files,
+            markers: platform::CUDA12_RUNTIME.markers,
+            external_url: None,
+        });
     }
     all
 }
@@ -3252,7 +3306,9 @@ mod tests {
         let progress = |_: Value| {};
         download_components(&root, &[id.clone()], &|| false, &progress).map_err(|e| e.detail).unwrap();
         assert!(component_status(&root, &c).installed);
-        assert_eq!(file_len(&file), c.files[0].size);
+        if c.files[0].extract == Extract::None {
+            assert_eq!(file_len(&file), c.files[0].size);
+        }
         println!("[OK] {id}: {before} bytes -> {} bytes, {}", file_len(&file), file.display());
     }
     use super::*;

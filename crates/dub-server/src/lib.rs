@@ -248,11 +248,14 @@ pub fn ensure_library_path(repo_root: &Path) {
 /// чтобы `Command::new("ffmpeg")` и подобные находили их без перезапуска после автозакачки. Вызывается
 /// один раз при старте сервера (main.rs / Tauri-shell). Идемпотентно: не дублирует уже присутствующие.
 pub fn augment_path_for_tools(repo_root: &Path) {
-    let dirs = [
+    let mut dirs = vec![
         repo_root.join("tools").join("ffmpeg"),
         repo_root.join("tools").join("llama"),
         repo_root.join("models").join("higgs-engine"),
     ];
+    if crate::hw::gpu_report().cuda_build == Some(crate::hw::CudaBuild::Cuda12) {
+        dirs.insert(2, repo_root.join("models").join("cuda12-runtime"));
+    }
     let sep = if cfg!(windows) { ";" } else { ":" };
     let cur = std::env::var("PATH").unwrap_or_default();
     let mut prefix = String::new();
@@ -901,6 +904,16 @@ fn ensure_job_components(
         for id in ["crisperwhisper-turbo", "langid", models::tcpp_build(models_root).dir()] {
             if missing(id) {
                 need.push(id.to_string());
+            }
+        }
+        // audiocpp_server and the CUDA libraries of its build; a program named by DUB_STUDIO_AUDIOCPP_SERVER is taken
+        // as it is.
+        if std::env::var_os("DUB_STUDIO_AUDIOCPP_SERVER").is_none() {
+            let runtime = if acpp::build() == hw::CudaBuild::Cuda12 { "cuda12-runtime" } else { "cuda-runtime" };
+            for id in ["higgs-engine", runtime] {
+                if missing(id) && !need.iter().any(|n| n == id) {
+                    need.push(id.to_string());
+                }
             }
         }
     }

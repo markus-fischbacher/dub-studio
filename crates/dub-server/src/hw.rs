@@ -136,6 +136,30 @@ pub const CUDA13_DRIVER: u32 = 580;
 pub const CUDA13_OLDEST: (u32, u32) = (7, 5);
 /// cuDriverGetVersion драйвера, поддерживающего CUDA 13.0 (1000 * major + 10 * minor).
 const CUDA13_DRIVER_API: u32 = 13_000;
+/// Second builds on CUDA 12.9 (SASS 5.2-12.0a, no PTX) for the cards and drivers CUDA 13 left behind: from Maxwell
+/// (compute capability 5.2) on a driver of the CUDA 12 branch (525+); minor version compatibility runs 12.9 there.
+pub const CUDA12_DRIVER: u32 = 525;
+pub const CUDA12_OLDEST: (u32, u32) = (5, 2);
+const CUDA12_DRIVER_API: u32 = 12_000;
+
+/// Which CUDA build of an engine runs on this card: CUDA 13 where it can, else CUDA 12.9.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CudaBuild {
+    Cuda13,
+    Cuda12,
+}
+
+/// The CUDA build for a card of this compute capability on a driver of this CUDA version; None — neither runs.
+pub fn cuda_build(compute: (u32, u32), cuda_driver: u32) -> Option<CudaBuild> {
+    if cuda13_verdict(compute, cuda_driver).is_ok() {
+        Some(CudaBuild::Cuda13)
+    } else if compute >= CUDA12_OLDEST && cuda_driver >= CUDA12_DRIVER_API {
+        Some(CudaBuild::Cuda12)
+    } else {
+        None
+    }
+}
 
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -151,6 +175,8 @@ pub struct GpuReport {
     pub compute: Option<String>,
     /// Локальные стадии можно считать на GPU этой сборкой.
     pub cuda13_ok: bool,
+    /// The CUDA build the card runs (engines that have both); None — neither.
+    pub cuda_build: Option<CudaBuild>,
     /// Почему нельзя: no_nvidia | no_device | cuda_init | driver_old | gpu_old.
     pub reason: Option<&'static str>,
     pub min_driver: u32,
@@ -222,6 +248,7 @@ fn probe_gpu() -> GpuReport {
                 Ok(()) => r.cuda13_ok = true,
                 Err(why) => r.reason = Some(why),
             }
+            r.cuda_build = cuda_build(compute, version);
         }
     }
     let mut ng = nvml().lock().unwrap_or_else(|e| e.into_inner());
@@ -348,6 +375,17 @@ mod tests {
         assert_eq!(cuda13_verdict((6, 1), 13_000), Err("gpu_old"), "Pascal CUDA 13 не поддерживает");
         assert_eq!(cuda13_verdict((7, 0), 12_000), Err("gpu_old"), "старая карта важнее старого драйвера");
         assert_eq!(cuda13_verdict((5, 2), 13_040), Err("gpu_old"));
+    }
+
+    #[test]
+    fn cuda12_takes_the_cards_and_drivers_cuda13_left() {
+        assert_eq!(cuda_build((8, 9), 13_040), Some(CudaBuild::Cuda13));
+        assert_eq!(cuda_build((8, 6), 12_080), Some(CudaBuild::Cuda12), "RTX 30 on driver 566");
+        assert_eq!(cuda_build((6, 1), 13_000), Some(CudaBuild::Cuda12), "Pascal");
+        assert_eq!(cuda_build((7, 0), 12_020), Some(CudaBuild::Cuda12), "V100");
+        assert_eq!(cuda_build(CUDA12_OLDEST, 12_000), Some(CudaBuild::Cuda12), "Maxwell 2 on driver 525");
+        assert_eq!(cuda_build((5, 0), 13_000), None, "Maxwell 1");
+        assert_eq!(cuda_build((8, 6), 11_080), None, "driver of the CUDA 11 branch");
     }
 
     #[test]

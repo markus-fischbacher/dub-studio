@@ -485,6 +485,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           <>
             {rowOf("crisperwhisper-turbo")}
             {rowOf("langid")}
+            {rowOf("higgs-engine")}
           </>
         )}
       </Group>
@@ -509,7 +510,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
         <BackendTabs k="diar_backend" />
         {rowOf("sortformer")}
       </Group>
-      <Group label={t("settings.roleRuntime")}>{rowOf("onnxruntime")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("onnxruntime-gpu")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("cudnn")}{rowOf("ffmpeg")}{rowOf("cuda-runtime")}{rowOf("vcruntime")}{rowOf("ocr")}</Group>
+      <Group label={t("settings.roleRuntime")}>{rowOf("onnxruntime")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("onnxruntime-gpu")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("cudnn")}{rowOf("ffmpeg")}{rowOf("cuda-runtime")}{rowOf("cuda12-runtime")}{rowOf("vcruntime")}{rowOf("ocr")}</Group>
       <YtDlpTool installed={!!get("ytdlp")?.installed} row={rowOf("ytdlp")} />
       {/* Производительность / экономия RAM — ВИДИМЫЕ контролы (не авто-магия): против OOM на слабой памяти. */}
       <Group label={t("settings.perfTitle")}>
@@ -4130,7 +4131,7 @@ const QUANT_GROUP: Record<string, string> = {
 // are not a choice on the first-run screen.
 const SERVICE = new Set([
   "higgs-engine", "qwen3-tts-engine", "transcribe-engine", "transcribe-engine-cpu", "langid",
-  "bsroformer-engine", "bsroformer-engine-cpu", "llama", "onnxruntime", "onnxruntime-gpu", "ffmpeg", "cuda-runtime", "cudnn",
+  "bsroformer-engine", "bsroformer-engine-cpu", "llama", "onnxruntime", "onnxruntime-gpu", "ffmpeg", "cuda-runtime", "cuda12-runtime", "cudnn",
   "vcruntime",
 ]);
 
@@ -4145,7 +4146,7 @@ function needs(id: string, s: SetupStatus): string[] {
   if (id.startsWith("higgs")) return ["higgs-engine"];
   if (id.startsWith("qwen3-tts")) return ["qwen3-tts-engine"];
   if (id.startsWith("parakeet")) return [build("transcribe-engine", "transcribe-engine-cpu")];
-  if (QUANT_GROUP[id] === "whisper") return ["langid", build("transcribe-engine", "transcribe-engine-cpu")];
+  if (QUANT_GROUP[id] === "whisper") return ["higgs-engine", "langid", build("transcribe-engine", "transcribe-engine-cpu")];
   if (id.startsWith("roformer")) return [build("bsroformer-engine", "bsroformer-engine-cpu")];
   if (id.startsWith("gemma")) return ["llama"];
   return [];

@@ -103,7 +103,7 @@ fn search_dirs(root: &Path) -> Vec<PathBuf> {
 pub const ENTRY_POINTS: &[(&str, &str)] = &[
     ("llama", "tools/llama/llama-server.exe"),
     ("llama", "tools/llama/ggml-cuda.dll"),
-    ("higgs-engine", "models/higgs-engine/audiocpp_engine.dll"),
+    ("higgs-engine", "tools/audiocpp/audiocpp_server.exe"),
     ("drama3", "models/drama-engine/drama_engine.dll"),
     ("onnxruntime", "models/runtime/onnxruntime-win-x64-1.28.2/lib/onnxruntime.dll"),
     ("onnxruntime-gpu", "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.28.2/lib/onnxruntime_providers_cuda.dll"),
@@ -230,6 +230,8 @@ mod tests {
         ("llama", "cublas64_13.dll", "cuda-runtime", false),
         ("llama", "cublasLt64_13.dll", "cuda-runtime", false),
         ("higgs-engine", "cublas64_13.dll", "cuda-runtime", false),
+        ("higgs-engine", "cublasLt64_13.dll", "cuda-runtime", false),
+        ("higgs-engine", "cufft64_12.dll", "cuda-runtime", false),
         ("drama3", "cublas64_13.dll", "cuda-runtime", false),
         ("bsroformer-engine", "cublas64_13.dll", "cuda-runtime", false),
         ("bsroformer-engine", "cublasLt64_13.dll", "cuda-runtime", false),
