@@ -93,6 +93,12 @@ impl ModelEntry {
     pub fn nemotron_asr(id: &str, gguf: &Path) -> ModelEntry {
         ModelEntry::new(id, "nemotron_asr", gguf, "asr", Mode::Offline)
     }
+
+    /// Nemotron 3 Diarization of a whole file, up to eight speakers in the order they first speak. `model` is the
+    /// model's package or the studios' `nemotron3_diar_v3.onnx`.
+    pub fn nemotron_3_diar(id: &str, model: &Path) -> ModelEntry {
+        ModelEntry::new(id, "nemotron_3_diar", model, "diar", Mode::Offline)
+    }
 }
 
 /// The whole config. `port` is chosen by [`crate::Server::start`].

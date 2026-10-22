@@ -46,7 +46,7 @@ pub struct Transcript {
     pub segments: Vec<TranscriptSpan>,
 }
 
-fn check_16k_mono(wav: &Path) -> Result<(), AcppError> {
+pub(crate) fn check_16k_mono(wav: &Path) -> Result<(), AcppError> {
     let spec = hound::WavReader::open(wav).map_err(|e| AcppError::Input { path: wav.display().to_string(), why: e.to_string() })?.spec();
     if spec.sample_rate != 16_000 || spec.channels != 1 {
         return Err(AcppError::Input {

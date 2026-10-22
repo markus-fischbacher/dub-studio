@@ -688,7 +688,7 @@ fn known_speaker_turns(
     emit(progress, "diarize", &msg);
     let mut embedder = dub_faces::VoiceEmbedder::load_on(voice_model, gpu)
         .map_err(|e| t!("analyze-wespeaker-needed", error = e.localize()))?;
-    dub_asr::turns_with_speaker_count(wav, detector, count, &mut |samples| {
+    dub_asr::turns_with_speaker_count(wav, &dub_asr::Diarizer::Onnx(detector), count, &mut |samples| {
         crate::jobs::check_cancelled()?;
         embedder.embed_samples(samples).map_err(|e| e.localize())
     }).map_err(|e| e.localize())
@@ -1004,7 +1004,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
                 known_speaker_turns(&asr_wav, &paths.sortformer_onnx, &voice_model,
                     crate::models::stage_backend(&paths.models_root, "diar_backend") == "gpu", args.speaker_count, progress)
             } else {
-                dub_asr::turns(&asr_wav, &paths.sortformer_onnx, 0.8, 2.5).map_err(|e| e.localize())
+                dub_asr::turns(&asr_wav, &dub_asr::Diarizer::Onnx(&paths.sortformer_onnx), 0.8, 2.5).map_err(|e| e.localize())
             };
             match result {
                 Ok(d) => {

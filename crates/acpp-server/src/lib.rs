@@ -1,6 +1,7 @@
 //! Client of `audiocpp_server` (audio.cpp): starts the server process with a config of its models, waits until it
 //! answers, speaks with Higgs Audio v3 as a stream of PCM deltas and recognises speech with Parakeet-TDT or
-//! CrisperWhisper into words and segments in seconds, telling CrisperWhisper the language (`language`).
+//! CrisperWhisper into words and segments in seconds, telling CrisperWhisper the language (`language`), and finds
+//! who speaks when with Nemotron 3 Diarization.
 //!
 //! The API is blocking: the studios call engines from their worker threads. Cancelling a speech request closes its
 //! connection; the server stops generating at its next delta, when writing to the closed socket fails.
@@ -8,6 +9,7 @@
 mod asr;
 pub mod asset;
 mod config;
+mod diar;
 pub mod language;
 mod process;
 mod registry;
@@ -16,6 +18,7 @@ mod sse;
 
 pub use asr::{TranscribeRequest, Transcript, TranscriptSpan, TranscriptWord};
 pub use config::{Backend, Mode, ModelEntry, ServerConfig};
+pub use diar::SpeakerTurn;
 pub use process::Server;
 pub use registry::{Servers, SERVERS};
 pub use speech::{Flow, Speech, SpeechDone, SpeechRequest, VoiceRef};
