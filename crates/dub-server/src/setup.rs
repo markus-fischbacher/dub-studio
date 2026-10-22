@@ -3173,6 +3173,25 @@ mod tests {
         assert!(kept.is_file());
         remove_retired(root.path());
     }
+
+    /// An installed studio (DUB_STUDIO_CHECK_ROOT, read only): every component with a file on disk that is not the
+    /// pinned one, which the next job or the first-run screen downloads again.
+    #[test]
+    #[ignore]
+    fn an_installed_studio_names_the_files_an_update_replaces() {
+        let Ok(root) = std::env::var("DUB_STUDIO_CHECK_ROOT") else { return };
+        let root = PathBuf::from(root);
+        for c in manifest() {
+            let st = component_status(&root, &c);
+            let present: Vec<&str> = c.markers.iter().map(|m| m.rel).filter(|rel| root.join(rel).is_file()).collect();
+            if !st.installed && !present.is_empty() {
+                let found: Vec<String> = present.iter().map(|rel| format!("{rel} {} bytes", file_len(&root.join(rel)))).collect();
+                println!("[REPLACE] {}: on disk {} | missing {}", c.id, found.join(", "), st.missing.join(", "));
+            } else if st.installed {
+                println!("[OK] {}", c.id);
+            }
+        }
+    }
     use super::*;
 
     fn download_proxy(address: &str, kind: dub_llm::net::ProxyKind) -> Result<ureq::Proxy, String> {

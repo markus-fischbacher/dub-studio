@@ -223,8 +223,11 @@ pub fn model_path(models_root: &Path, m: &Model) -> PathBuf {
     models_root.join(m.dir).join(m.file)
 }
 
+/// The engine and the model are the pinned files: one of another size is another release (an engine an update left
+/// behind) and counts as not installed.
 pub fn installed(models_root: &Path, build: Build, m: &Model) -> bool {
-    engine_dir(models_root, build).join(LIBRARY).is_file() && model_path(models_root, m).is_file()
+    let pinned = |path: PathBuf, size: u64| std::fs::metadata(path).is_ok_and(|f| f.is_file() && f.len() == size);
+    pinned(engine_dir(models_root, build).join(LIBRARY), build.download().size) && pinned(model_path(models_root, m), m.download.size)
 }
 
 /// Вспомогательная модель transcribe.cpp: разметка речи (Silero VAD v6.2, только F32, считается на CPU) и определение
@@ -1093,6 +1096,33 @@ mod tests {
             assert_eq!(m.download.sha256.len(), 64, "{}", m.id);
             assert!(m.download.size > 0, "{}", m.id);
         }
+    }
+
+    #[test]
+    fn an_engine_of_another_release_is_not_installed() {
+        static TINY: Model = Model {
+            id: "tiny",
+            name: "tiny",
+            dir: "tiny-model",
+            component: "tiny",
+            file: "tiny.gguf",
+            download: Download { url: "", size: 3, sha256: "" },
+            languages: &[],
+        };
+        let root = std::env::temp_dir().join(format!("dub-tcpp-pin-{}", std::process::id()));
+        let lib = engine_dir(&root, Build::Cpu).join(LIBRARY);
+        std::fs::create_dir_all(lib.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(root.join(TINY.dir)).unwrap();
+        std::fs::write(model_path(&root, &TINY), b"abc").unwrap();
+        let engine = std::fs::File::create(&lib).unwrap();
+        engine.set_len(Build::Cpu.download().size + 4096).unwrap();
+        assert!(!installed(&root, Build::Cpu, &TINY), "an older engine of another size");
+        engine.set_len(Build::Cpu.download().size).unwrap();
+        drop(engine);
+        assert!(installed(&root, Build::Cpu, &TINY));
+        std::fs::write(model_path(&root, &TINY), b"abcd").unwrap();
+        assert!(!installed(&root, Build::Cpu, &TINY), "a model of another size");
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
