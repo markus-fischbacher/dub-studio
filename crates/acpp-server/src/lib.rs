@@ -6,6 +6,7 @@
 //! connection; the server stops generating at its next delta, when writing to the closed socket fails.
 
 mod asr;
+pub mod asset;
 mod config;
 pub mod language;
 mod process;
