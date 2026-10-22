@@ -89,7 +89,9 @@ fn session(path: &Path, gpu: bool) -> Result<Session, String> {
     if gpu {
         b = b.with_execution_providers([ort::ep::CUDA::default().build().error_on_failure()]).map_err(|e| err(&e))?;
     }
-    b.commit_from_file(path).map_err(|e| err(&e))
+    let session = b.commit_from_file(path).map_err(|e| err(&e))?;
+    tracing::info!("onnxruntime {}: {}", path.display(), if gpu { "CUDA" } else { "CPU" });
+    Ok(session)
 }
 
 fn json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {

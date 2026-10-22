@@ -80,6 +80,7 @@ impl OnnxModel {
 
     /// Прогнать [N,3,H,W] f32 -> первый выход (shape, данные). Для одно-выходных моделей (LVFace).
     pub fn run_single(&mut self, input: Array4<f32>) -> Result<(Vec<usize>, Vec<f32>), FacesError> {
+        tracing::info!("onnxruntime {}: {}", path.display(), if gpu { "CUDA" } else { "CPU" });
         let mut outs = self.run(input)?;
         if outs.is_empty() {
             return Err(FacesError::NoOutputs);

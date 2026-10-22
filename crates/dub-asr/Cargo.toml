@@ -7,6 +7,7 @@ description = "Распознавание (audio.cpp: Parakeet-TDT и CrisperWhi
 
 [dependencies]
 dub-core = { path = "../dub-core" }
+tracing = { workspace = true }
 # load-dynamic: onnxruntime подгружается из onnxruntime.dll в рантайме, а не линкуется статически.
 # Это обходит рассинхрон MSVC STL (статическая libort_sys собрана новее локального тулчейна) и заодно
 # делает движок портативным (DLL кладётся рядом с бинарём / ищется по ORT_DYLIB_PATH).

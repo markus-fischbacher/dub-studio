@@ -1423,6 +1423,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -1458,6 +1459,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -1476,6 +1478,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -1497,6 +1500,7 @@ version = "2.0.0"
 dependencies = [
  "dub-core",
  "thiserror 2.0.21",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 

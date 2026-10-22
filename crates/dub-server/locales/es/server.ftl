@@ -797,6 +797,7 @@ llm-log-file = registro de llama-server { $path }: { $error }
 llm-exited-early = llama-server terminó antes de estar listo ({ $status }); stderr: { $stderr }
 llm-not-ready = llama-server no arrancó en { $secs } s (puerto { $port }); stderr: { $stderr }
 llm-http = la solicitud al modelo falló: { $error }
+llm-no-gpu-device = la Gemma local necesita una tarjeta gráfica y la versión de llama.cpp no ve ninguna ({ $detail }). Elige OpenRouter o tu propio servidor para la traducción y la visión, o revisa el controlador de la tarjeta.
 llm-api = API del modelo: { $error }
 llm-rejected = la API del modelo rechazó la solicitud ({ $status }): { $body }
 llm-empty-answer = el modelo { $model } devolvió una respuesta vacía (sin motivo)

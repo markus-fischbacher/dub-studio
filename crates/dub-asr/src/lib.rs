@@ -63,6 +63,7 @@ fn exec_config() -> ExecutionConfig {
             _ => GraphOptimizationLevel::Level1,
         };
         let mut b = b.with_optimization_level(lvl)?;
+        tracing::info!("onnxruntime diarization session: {}", if gpu && cfg!(feature = "cuda") { "CUDA" } else { "CPU" });
         #[cfg(feature = "cuda")]
         {
             if gpu {

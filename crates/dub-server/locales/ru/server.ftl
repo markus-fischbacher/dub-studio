@@ -808,6 +808,7 @@ llm-log-file = лог llama-server { $path }: { $error }
 llm-exited-early = llama-server завершился до готовности ({ $status }); stderr: { $stderr }
 llm-not-ready = llama-server не поднялся за { $secs } с (порт { $port }); stderr: { $stderr }
 llm-http = запрос к модели не прошёл: { $error }
+llm-no-gpu-device = локальной Gemma нужна видеокарта, а сборка llama.cpp не видит ни одной ({ $detail }). Выберите для перевода и vision OpenRouter или свой сервер либо проверьте драйвер видеокарты.
 llm-api = API модели: { $error }
 llm-rejected = API модели отверг запрос ({ $status }): { $body }
 llm-empty-answer = модель { $model } вернула пустой ответ (без причины)

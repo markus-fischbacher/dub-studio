@@ -48,6 +48,7 @@ impl Localize for LlmError {
             LlmError::LogFile { path, error } => t!("llm-log-file", path = shown(path), error = error.clone()),
             LlmError::ExitedEarly { status, stderr } => t!("llm-exited-early", status = status.clone(), stderr = stderr.clone()),
             LlmError::NotReady { secs, port, stderr } => t!("llm-not-ready", secs = *secs, port = *port, stderr = stderr.clone()),
+            LlmError::NoGpuDevice { detail } => t!("llm-no-gpu-device", detail = detail.clone()),
             LlmError::Http(error) => t!("llm-http", error = error.clone()),
             LlmError::Api(error) => t!("llm-api", error = error.clone()),
             LlmError::Rejected { status, body, .. } => t!("llm-rejected", status = status.clone(), body = body.clone()),
