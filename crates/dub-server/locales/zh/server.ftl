@@ -90,7 +90,7 @@ llm-pair = 翻译：{ $text }；视觉：{ $vision }
 common-ffmpeg-exit = ffmpeg 退出码 { $code }：
     { $tail }
 media-ffprobe-start = ffprobe 启动失败：{ $error }
-media-ffprobe-exit = ffprobe 退出码 { $code }：{ $stderr }
+media-unreadable = 无法将 { $file } 读取为视频或音频：文件已损坏或未下载完整（ffprobe：{ $stderr }）
 media-ffprobe-no-streams = ffprobe：没有流
 media-no-streams = 输入中既没有视频流也没有音频流
 media-no-duration = 无法确定时长

@@ -7,8 +7,10 @@ description = "Вокал/инструментал сепарация — Mel-Ba
 
 [dependencies]
 dub-core = { path = "../dub-core" }
-hound = "3"
 thiserror = { workspace = true }
+
+[dev-dependencies]
+hound = "3"
 
 [[example]]
 name = "separate"

@@ -1803,7 +1803,13 @@ async fn create_project(
         let dir = d.clone();
         match tokio::task::spawn_blocking(mcp::carry(move || write_initial_project(&dir))).await {
             Ok(Ok(())) => {}
-            Ok(Err(e)) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+            Ok(Err(InitialProjectError::Unreadable(e))) => {
+                if let Err(rm) = tokio::fs::remove_dir_all(&d).await {
+                    tracing::error!("[ERROR] the refused upload {} was not removed: {rm}", d.display());
+                }
+                return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": "unreadable_media", "detail": e }))).into_response();
+            }
+            Ok(Err(InitialProjectError::Io(e))) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
             Err(e) => return join_failure(e),
         }
     }
@@ -1812,31 +1818,30 @@ async fn create_project(
 }
 
 /// Начальный project.json проекта из его source.txt (и import_subs.*, если субтитры пришли вместе с видео): проект
-/// открывается в редакторе без analyze. Общий для загрузки файла и загрузки по ссылке.
-pub(crate) fn write_initial_project(d: &Path) -> Result<(), String> {
-    let src_path_str = std::fs::read_to_string(d.join("source.txt")).map_err(|e| format!("{}: {e}", d.join("source.txt").display()))?;
+/// открывается в редакторе без analyze. Общий для загрузки файла и загрузки по ссылке. Файл, который ffprobe не
+/// читает, проектом не становится: каждый запуск на нём падал бы тем же отказом.
+pub(crate) fn write_initial_project(d: &Path) -> Result<(), InitialProjectError> {
+    let src_path_str = std::fs::read_to_string(d.join("source.txt"))
+        .map_err(|e| InitialProjectError::Io(format!("{}: {e}", d.join("source.txt").display())))?;
     let src_path = Path::new(src_path_str.trim());
-    let meta = match media::probe(src_path) {
-        Ok(m) => dub_core::Meta {
-            video: src_path.to_string_lossy().to_string(),
-            duration: m.duration,
-            width: m.width,
-            height: m.height,
-            fps: m.fps,
-            src_codec: m.src_codec,
-            extra: serde_json::Map::new(),
-        },
-        Err(_) => dub_core::Meta {
-            video: src_path.to_string_lossy().to_string(),
-            duration: 0.0,
-            width: 1920,
-            height: 1080,
-            fps: 30.0,
-            src_codec: String::new(),
-            extra: serde_json::Map::new(),
-        },
+    let m = media::probe(src_path).map_err(InitialProjectError::Unreadable)?;
+    let meta = dub_core::Meta {
+        video: src_path.to_string_lossy().to_string(),
+        duration: m.duration,
+        width: m.width,
+        height: m.height,
+        fps: m.fps,
+        src_codec: m.src_codec,
+        extra: serde_json::Map::new(),
     };
-    save_project_atomic(d, &initial_project(d, meta))
+    save_project_atomic(d, &initial_project(d, meta)).map_err(InitialProjectError::Io)
+}
+
+/// Why a new project was not made: its file is no video or audio the studio reads, or the disk refused.
+#[derive(Debug)]
+pub(crate) enum InitialProjectError {
+    Unreadable(String),
+    Io(String),
 }
 
 /// Начальный project.json нового проекта, чтобы редактор открыл его без analyze: медиа и реплики

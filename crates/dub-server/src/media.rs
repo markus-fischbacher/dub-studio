@@ -48,10 +48,12 @@ pub fn probe(input: &Path) -> Result<MediaMeta, String> {
         .output()
         .map_err(|e| t!("media-ffprobe-start", error = e.to_string()))?;
     if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let file = input.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| input.display().to_string());
         return Err(t!(
-            "media-ffprobe-exit",
-            code = format!("{:?}", out.status.code()),
-            stderr = String::from_utf8_lossy(&out.stderr).into_owned()
+            "media-unreadable",
+            file = file,
+            stderr = stderr.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ")
         ));
     }
     let v: Value =
@@ -207,10 +209,11 @@ fn run_ff_args(args: &[OsString]) -> Result<(), String> {
 
 fn extract_audio_args(video: &Path, out_wav: &Path, sr: u32, ac: u32) -> Vec<OsString> {
     let (sr, ac) = (sr.to_string(), ac.to_string());
+    // Past 4 GiB (44.1 kHz stereo beyond ~6.8 h) a plain RIFF cannot hold the size; ffmpeg then leaves it 0xFFFFFFFF.
     os_args(&[
         OsStr::new("-y"), OsStr::new("-i"), video.as_os_str(),
         OsStr::new("-vn"), OsStr::new("-af"), OsStr::new(SYNC_AF), OsStr::new("-ac"), OsStr::new(&ac),
-        OsStr::new("-ar"), OsStr::new(&sr), out_wav.as_os_str(),
+        OsStr::new("-ar"), OsStr::new(&sr), OsStr::new("-rf64"), OsStr::new("auto"), out_wav.as_os_str(),
     ])
 }
 

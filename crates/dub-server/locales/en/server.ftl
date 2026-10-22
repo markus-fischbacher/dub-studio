@@ -114,7 +114,7 @@ llm-pair = translation: { $text }; vision: { $vision }
 common-ffmpeg-exit = ffmpeg exit code { $code }:
     { $tail }
 media-ffprobe-start = ffprobe failed to start: { $error }
-media-ffprobe-exit = ffprobe exited with code { $code }: { $stderr }
+media-unreadable = { $file } cannot be read as video or audio: the file is damaged or not fully downloaded (ffprobe: { $stderr })
 media-ffprobe-no-streams = ffprobe: no streams
 media-no-streams = the input has neither a video nor an audio stream
 media-no-duration = the duration could not be determined

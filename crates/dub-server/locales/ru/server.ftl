@@ -118,7 +118,7 @@ llm-pair = перевод: { $text }; vision: { $vision }
 common-ffmpeg-exit = ffmpeg код { $code }:
     { $tail }
 media-ffprobe-start = ffprobe запуск не удался: { $error }
-media-ffprobe-exit = ffprobe вернул код { $code }: { $stderr }
+media-unreadable = { $file } не читается как видео или аудио: файл повреждён или скачан не до конца (ffprobe: { $stderr })
 media-ffprobe-no-streams = ffprobe: нет streams
 media-no-streams = во входе нет ни видео-, ни аудиопотока
 media-no-duration = не удалось определить длительность

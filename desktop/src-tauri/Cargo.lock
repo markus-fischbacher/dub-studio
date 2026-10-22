@@ -1491,7 +1491,6 @@ name = "dub-sep"
 version = "2.0.0"
 dependencies = [
  "dub-core",
- "hound",
  "thiserror 2.0.21",
 ]
 
