@@ -1,4 +1,4 @@
-//! The published `audiocpp_server` of the studios (fork timoncool/audio.cpp, branch studio; model specs inside, AVX2
+//! The published `audiocpp_server` of the studios (fork timoncool/audio.cpp, branch studio, f476882e; model specs inside, AVX2
 //! floor, no AVX-512) and what it needs to start: one build per CUDA major, chosen by the card, a Vulkan build for
 //! other cards and a processor build, and the CUDA libraries a CUDA build imports. A studio downloads the assets into its own folders and checks the libraries before
 //! it starts the server (`missing_libraries`); without them Windows refuses the program (0xC0000135).
@@ -77,7 +77,8 @@ impl Build {
         match self {
             Build::Cuda13 => Some(SERVER_WIN_CUDA13),
             Build::Cuda12 => Some(SERVER_WIN_CUDA12),
-            Build::Vulkan | Build::Cpu => None,
+            Build::Vulkan => Some(SERVER_WIN_VULKAN),
+            Build::Cpu => Some(SERVER_WIN_CPU),
         }
     }
 
@@ -94,18 +95,30 @@ impl Build {
     }
 }
 
-/// The Windows archives of the two builds.
+/// The Windows archives of the builds (release server-f476882e).
 pub const SERVER_WIN_CUDA13: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-efc92120/audiocpp-server-win-cuda13-x64.zip",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-f476882e/audiocpp-server-win-cuda13-x64.zip",
     file: "audiocpp-server-win-cuda13-x64.zip",
-    size: 130_925_562,
-    sha256: "d50d4d6a86000b6a99e9d89354a034b61dcc07a79299f0608f6705dc604abbfb",
+    size: 130_735_597,
+    sha256: "2ba7ea1166e08c462c9f67adde008fc3d44a416f522a2260ee453701ed6c6729",
 };
 pub const SERVER_WIN_CUDA12: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-efc92120/audiocpp-server-win-cuda12-x64.zip",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-f476882e/audiocpp-server-win-cuda12-x64.zip",
     file: "audiocpp-server-win-cuda12-x64.zip",
-    size: 177_968_601,
-    sha256: "db3a50f67948d1d703882efa4a587bc8fe89f1c7d46b1b04e86afd4d5054563e",
+    size: 177_792_911,
+    sha256: "adb13e7a437e5ad535e6e01affadaff960911eb99c49cb5b89412ddfaf397b96",
+};
+pub const SERVER_WIN_VULKAN: Asset = Asset {
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-f476882e/audiocpp-server-win-vulkan-x64.zip",
+    file: "audiocpp-server-win-vulkan-x64.zip",
+    size: 32_872_841,
+    sha256: "d7b4cabc9e85610599472db762a66e0b2cb4288abdb8353c5af44afcadcbb6f8",
+};
+pub const SERVER_WIN_CPU: Asset = Asset {
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-f476882e/audiocpp-server-win-cpu-x64.zip",
+    file: "audiocpp-server-win-cpu-x64.zip",
+    size: 15_935_671,
+    sha256: "4ba00b4c420c597da0b4c2e715a44f775888286d67cc3ca118493ec6352e06e7",
 };
 
 /// The CUDA 12.9 libraries of the CUDA 12 build (PyPI wheels; their `.dll` files unpack flat): cudart 12.9.79,
