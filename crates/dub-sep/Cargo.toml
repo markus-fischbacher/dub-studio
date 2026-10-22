@@ -9,6 +9,9 @@ description = "Вокал/инструментал сепарация — Mel-Ba
 dub-core = { path = "../dub-core" }
 thiserror = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+
 [dev-dependencies]
 hound = "3"
 
