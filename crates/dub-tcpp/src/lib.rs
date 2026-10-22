@@ -45,13 +45,13 @@ impl Build {
     }
 
 
-    /// Whether this computer's processor runs the engine: every x86-64 build needs AVX2, FMA and F16C (every Intel since
-    /// Haswell, every AMD since Zen), and a processor without them gets this answer instead of a crash on the first call.
+    /// Whether this computer's processor runs the engine: every x86-64 build needs AVX2, FMA, F16C and BMI2 (every Intel
+    /// since Haswell, every AMD since Zen), and a processor without them gets this answer instead of a crash on the first call.
     pub fn runs_here(self) -> Result<(), String> {
         let _ = self;
         #[cfg(target_arch = "x86_64")]
-        if !(std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") && std::arch::is_x86_feature_detected!("f16c")) {
-            return Err("transcribe.cpp needs a processor with AVX2, FMA and F16C (Intel since 2013, AMD since 2017), and this one has not got them".into());
+        if !(std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma") && std::arch::is_x86_feature_detected!("f16c") && std::arch::is_x86_feature_detected!("bmi2")) {
+            return Err("transcribe.cpp needs a processor with AVX2, FMA, F16C and BMI2 (Intel since 2013, AMD since 2017), and this one has not got them".into());
         }
         Ok(())
     }
