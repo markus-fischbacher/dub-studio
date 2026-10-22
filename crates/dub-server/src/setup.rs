@@ -3237,6 +3237,24 @@ mod tests {
             }
         }
     }
+
+    /// A program folder (DUB_STUDIO_SWAP_ROOT) holding an engine of a former release: the component counts as missing,
+    /// and its download puts the pinned file in its place.
+    #[test]
+    #[ignore]
+    fn a_former_engine_is_replaced_by_the_pinned_one() {
+        let Ok(root) = std::env::var("DUB_STUDIO_SWAP_ROOT") else { return };
+        let (root, id) = (PathBuf::from(root), std::env::var("DUB_STUDIO_SWAP_COMPONENT").unwrap_or_else(|_| "transcribe-engine".into()));
+        let c = manifest().into_iter().find(|c| c.id == id).unwrap();
+        let file = root.join(c.files[0].dest_rel);
+        let before = file_len(&file);
+        assert!(!component_status(&root, &c).installed, "{} of {before} bytes counts as installed", file.display());
+        let progress = |_: Value| {};
+        download_components(&root, &[id.clone()], &|| false, &progress).map_err(|e| e.detail).unwrap();
+        assert!(component_status(&root, &c).installed);
+        assert_eq!(file_len(&file), c.files[0].size);
+        println!("[OK] {id}: {before} bytes -> {} bytes, {}", file_len(&file), file.display());
+    }
     use super::*;
 
     fn download_proxy(address: &str, kind: dub_llm::net::ProxyKind) -> Result<ureq::Proxy, String> {
