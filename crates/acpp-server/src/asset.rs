@@ -1,6 +1,6 @@
-//! The published `audiocpp_server` of the studios (fork timoncool/audio.cpp, branch studio, efc92120; model specs
-//! inside, AVX2 floor, no AVX-512) and what it needs to start: one build per CUDA major, chosen by the card, and the
-//! CUDA libraries the build imports. A studio downloads the assets into its own folders and checks the libraries before
+//! The published `audiocpp_server` of the studios (fork timoncool/audio.cpp, branch studio; model specs inside, AVX2
+//! floor, no AVX-512) and what it needs to start: one build per CUDA major, chosen by the card, a Vulkan build for
+//! other cards and a processor build, and the CUDA libraries a CUDA build imports. A studio downloads the assets into its own folders and checks the libraries before
 //! it starts the server (`missing_libraries`); without them Windows refuses the program (0xC0000135).
 
 use std::path::Path;
@@ -15,7 +15,7 @@ pub struct Asset {
     pub sha256: &'static str,
 }
 
-/// A CUDA build of the server.
+/// A build of the server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Build {
@@ -23,6 +23,10 @@ pub enum Build {
     Cuda13,
     /// SASS 5.2-12.0a without PTX; cudart 12, cuBLAS 12 and cuFFT 11 from [`CUDA12_RUNTIME`]. Driver 525+.
     Cuda12,
+    /// Any card with a Vulkan driver (AMD, Intel; NVIDIA only when chosen, not in «auto»).
+    Vulkan,
+    /// The processor alone.
+    Cpu,
 }
 
 /// The oldest card of each build and the CUDA version its driver has to report (cuDriverGetVersion: 1000 * major + 10
@@ -45,11 +49,22 @@ impl Build {
         }
     }
 
+    /// The backend the server of this build is started with.
+    pub const fn backend(self) -> crate::Backend {
+        match self {
+            Build::Cuda13 | Build::Cuda12 => crate::Backend::Cuda,
+            Build::Vulkan => crate::Backend::Vulkan,
+            Build::Cpu => crate::Backend::Cpu,
+        }
+    }
+
     /// The folder of the build under the program's tools folder; the archive unpacks flat into it.
     pub const fn folder(self) -> &'static str {
         match self {
             Build::Cuda13 => "audiocpp",
             Build::Cuda12 => "audiocpp-cuda12",
+            Build::Vulkan => "audiocpp-vulkan",
+            Build::Cpu => "audiocpp-cpu",
         }
     }
 
@@ -59,10 +74,11 @@ impl Build {
         if !cfg!(windows) {
             return None;
         }
-        Some(match self {
-            Build::Cuda13 => SERVER_WIN_CUDA13,
-            Build::Cuda12 => SERVER_WIN_CUDA12,
-        })
+        match self {
+            Build::Cuda13 => Some(SERVER_WIN_CUDA13),
+            Build::Cuda12 => Some(SERVER_WIN_CUDA12),
+            Build::Vulkan | Build::Cpu => None,
+        }
     }
 
     /// The CUDA libraries the program imports and the archive does not carry.
@@ -73,6 +89,7 @@ impl Build {
         match self {
             Build::Cuda13 => &["cublas64_13.dll", "cublasLt64_13.dll", "cufft64_12.dll"],
             Build::Cuda12 => &["cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll", "cufft64_11.dll"],
+            Build::Vulkan | Build::Cpu => &[],
         }
     }
 }
@@ -134,6 +151,16 @@ mod tests {
         assert_eq!(Build::for_card(CUDA12_OLDEST, CUDA12_DRIVER_API), Some(Build::Cuda12), "Maxwell 2 on driver 525");
         assert_eq!(Build::for_card((5, 0), 13_000), None, "Maxwell 1");
         assert_eq!(Build::for_card((8, 6), 11_080), None, "a driver of the CUDA 11 branch");
+    }
+
+    #[test]
+    fn a_build_names_its_backend_and_folder_and_only_cuda_needs_libraries() {
+        assert_eq!(Build::Cuda12.backend(), crate::Backend::Cuda);
+        assert_eq!(Build::Vulkan.backend(), crate::Backend::Vulkan);
+        assert_eq!(Build::Cpu.backend(), crate::Backend::Cpu);
+        let folders = [Build::Cuda13, Build::Cuda12, Build::Vulkan, Build::Cpu].map(Build::folder);
+        assert_eq!(folders.iter().collect::<std::collections::HashSet<_>>().len(), 4, "{folders:?}");
+        assert!(Build::Vulkan.libraries().is_empty() && Build::Cpu.libraries().is_empty());
     }
 
     #[test]

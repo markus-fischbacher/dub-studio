@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 #[serde(rename_all = "lowercase")]
 pub enum Backend {
     Cuda,
+    Vulkan,
     Cpu,
 }
 

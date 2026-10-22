@@ -85,6 +85,7 @@ pub fn models(models_root: &Path) -> Vec<ModelEntry> {
 fn config(repo_root: &Path, models_root: &Path, backend: Backend) -> ServerConfig {
     let name = match backend {
         Backend::Cuda => "cuda",
+        Backend::Vulkan => "vulkan",
         Backend::Cpu => "cpu",
     };
     ServerConfig {
