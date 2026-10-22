@@ -3084,22 +3084,45 @@ fn write_entry(entry: &mut impl Read, out: &Path, mode: Option<u32>) -> Result<(
 /// Studio 4.3 and earlier) and the Faster-Whisper models (4.4 and earlier).
 const RETIRED: &[&str] = &["tdt", "tdt-fp32", "tdt-ultra", "tdt-ultra-int8", "whisper"];
 
+/// Programs of a former version that nothing runs any more, under the program folder: the OpenRouter helper (Dub Studio
+/// 4.2 and earlier), the Higgs library (Higgs runs in audiocpp_server now) and ONNX Runtime 1.24.2 (before 1.28.2).
+const RETIRED_TOOLS: &[&str] = &[
+    "tools/openrouter-helper",
+    "models/higgs-engine/audiocpp_engine.dll",
+    "models/higgs-engine/libaudiocpp_engine.so",
+    "models/runtime/onnxruntime-win-x64-1.24.2",
+    "models/runtime/onnxruntime-win-x64-gpu-1.24.2",
+];
+
+/// The studio's own downloads it no longer runs are deleted for good: hundreds of megabytes of runtimes have no place
+/// in the person's recycle bin, which keeps their projects.
+fn delete(path: &Path) -> Result<(), String> {
+    if path.is_dir() { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) }.map_err(|e| e.to_string())
+}
+
 /// Removes the retired models, so they do not keep gigabytes that no row of the setup screen shows. A link (another
 /// program's folder linked in) loses only the link; a hard-linked file stays with the program that shares it.
 pub fn remove_retired(models_root: &Path) {
-    for rel in RETIRED {
-        let path = models_root.join(rel);
+    retire(models_root, RETIRED, &delete);
+}
+
+/// Removes the retired programs (RETIRED_TOOLS) the same way.
+pub fn remove_retired_tools(repo_root: &Path) {
+    retire(repo_root, RETIRED_TOOLS, &delete);
+}
+
+fn retire(root: &Path, retired: &[&str], discard: &dyn Fn(&Path) -> Result<(), String>) {
+    for rel in retired {
+        let path = root.join(rel);
         let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
         let removed = if meta.file_type().is_symlink() {
-            std::fs::remove_dir(&path).or_else(|_| std::fs::remove_file(&path))
-        } else if meta.is_dir() {
-            std::fs::remove_dir_all(&path)
+            std::fs::remove_dir(&path).or_else(|_| std::fs::remove_file(&path)).map_err(|e| e.to_string())
         } else {
-            std::fs::remove_file(&path)
+            discard(&path)
         };
         match removed {
-            Ok(()) => tracing::info!("removed the retired models {}", path.display()),
-            Err(e) => tracing::error!("[ERROR] could not remove the retired models {}: {e}", path.display()),
+            Ok(()) => tracing::info!("removed the retired {}", path.display()),
+            Err(e) => tracing::error!("[ERROR] could not remove the retired {}: {e}", path.display()),
         }
     }
 }
@@ -3114,9 +3137,30 @@ const RETIRED_WHISPER_RECORDS: &[&str] = &[
     "tools/whisper/_wcudnn.tar.xz.json",
 ];
 
+/// The former Whisper program and the CUDA 11 cuBLAS and cuDNN 8 it brought, as an install without records left them
+/// in tools/whisper.
+const RETIRED_WHISPER_FILES: &[&str] = &[
+    "whisper-faster.exe",
+    "whisper-faster",
+    "cublas64_11.dll",
+    "cublasLt64_11.dll",
+    "nvblas64_11.dll",
+    "cudnn64_8.dll",
+    "cudnn_adv_infer64_8.dll",
+    "cudnn_adv_train64_8.dll",
+    "cudnn_cnn_infer64_8.dll",
+    "cudnn_cnn_train64_8.dll",
+    "cudnn_ops_infer64_8.dll",
+    "cudnn_ops_train64_8.dll",
+];
+
 /// Removes the former Whisper program and its CUDA 11 libraries: what their install records list, and an older
 /// install without records (the program and the cuBLAS and cuDNN libraries lying directly in tools/whisper).
 pub fn remove_retired_whisper(repo_root: &Path) {
+    retire_whisper(repo_root, &delete);
+}
+
+fn retire_whisper(repo_root: &Path, discard: &dyn Fn(&Path) -> Result<(), String>) {
     let dir = repo_root.join("tools").join("whisper");
     let mut doomed: Vec<PathBuf> = Vec::new();
     for rel in RETIRED_WHISPER_RECORDS {
@@ -3128,22 +3172,12 @@ pub fn remove_retired_whisper(repo_root: &Path) {
         }
         doomed.push(record);
     }
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for e in entries.flatten() {
-            let name = e.file_name().to_string_lossy().to_ascii_lowercase();
-            let old_program = name == "whisper-faster.exe" || name == "whisper-faster";
-            let old_cuda = ["cublas", "cudnn", "libcublas", "libcudnn"].iter().any(|p| name.starts_with(p));
-            if (old_program || old_cuda) && e.path().is_file() {
-                doomed.push(e.path());
-            }
-        }
-    }
+    doomed.extend(RETIRED_WHISPER_FILES.iter().map(|name| dir.join(name)));
     doomed.sort();
     doomed.dedup();
-    for path in doomed {
-        match std::fs::remove_file(&path) {
+    for path in doomed.into_iter().filter(|p| p.is_file()) {
+        match discard(&path) {
             Ok(()) => tracing::info!("removed the retired Whisper file {}", path.display()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => tracing::error!("[ERROR] could not remove the retired Whisper file {}: {e}", path.display()),
         }
     }
@@ -3168,10 +3202,21 @@ mod tests {
         let kept = root.path().join("asr-gguf-parakeet-v3").join("parakeet-tdt-0.6b-v3-Q8_0.gguf");
         std::fs::create_dir_all(kept.parent().unwrap()).unwrap();
         std::fs::write(&kept, b"x").unwrap();
-        remove_retired(root.path());
+        let gone = |p: &Path| if p.is_dir() { std::fs::remove_dir_all(p) } else { std::fs::remove_file(p) }.map_err(|e| e.to_string());
+        retire(root.path(), RETIRED, &gone);
         assert!(RETIRED.iter().all(|rel| !root.path().join(rel).exists()));
         assert!(kept.is_file());
-        remove_retired(root.path());
+        retire(root.path(), RETIRED, &gone);
+        for rel in RETIRED_TOOLS {
+            std::fs::create_dir_all(root.path().join(rel)).unwrap();
+            std::fs::write(root.path().join(rel).join("x.dll"), b"x").unwrap();
+        }
+        let current = root.path().join("models/runtime/onnxruntime-win-x64-1.28.2/lib/onnxruntime.dll");
+        std::fs::create_dir_all(current.parent().unwrap()).unwrap();
+        std::fs::write(&current, b"x").unwrap();
+        retire(root.path(), RETIRED_TOOLS, &gone);
+        assert!(RETIRED_TOOLS.iter().all(|rel| !root.path().join(rel).exists()));
+        assert!(current.is_file());
     }
 
     /// An installed studio (DUB_STUDIO_CHECK_ROOT, read only): every component with a file on disk that is not the
@@ -3822,7 +3867,7 @@ mod tests {
         .unwrap();
         std::fs::create_dir_all(root.path().join("models")).unwrap();
         std::fs::write(root.path().join("models/elsewhere.bin"), b"x").unwrap();
-        remove_retired_whisper(root.path());
+        retire_whisper(root.path(), &|p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string()));
         for gone in ["whisper-faster.exe", "cublas64_11.dll", "cudnn_ops_infer64_8.dll", "old-extra.dll", "_whisper.zip.json"] {
             assert!(!w.join(gone).exists(), "{gone}");
         }

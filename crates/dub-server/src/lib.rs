@@ -374,6 +374,7 @@ impl AppState {
         let mroot = models_root(&repo_root);
         setup::remove_retired(&mroot);
         setup::remove_retired_whisper(&repo_root);
+        setup::remove_retired_tools(&repo_root);
         match credentials::migrate_legacy_selection(&mroot) {
             Ok(moved) if moved.openrouter_key || moved.proxy_password => {
                 tracing::info!("secrets moved from active.json to the secret store: {moved:?}")
