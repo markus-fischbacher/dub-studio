@@ -1,5 +1,6 @@
-//! Recognition in the studio's audiocpp_server (`acpp_server`): Parakeet-TDT, which finds the language itself, and
-//! CrisperWhisper, which is told it (`acpp_server::language`).
+//! Recognition in the studio's audiocpp_server (`acpp_server`): Parakeet-TDT, which finds the language itself,
+//! Nemotron 3.5, which is told the chosen one as it is, and CrisperWhisper, which is told it by Whisper code
+//! (`acpp_server::language`).
 
 use crate::{segment_words, AsrEngine, AsrError, Segment, SpeakerSegment, Turn, Word, SEG_MAX_DUR, SEG_MAX_GAP};
 use acpp_server::{Server, TranscribeRequest};
@@ -11,6 +12,9 @@ use std::sync::Arc;
 pub enum Language {
     /// The model finds it (Parakeet).
     Own,
+    /// Told the chosen code as written, the model resolving it to its own spelling (Nemotron 3.5: `ru` or `ru-RU`);
+    /// none or «auto» — the model finds it.
+    Told,
     /// Told by Whisper code; «auto» is heard by VoxLingua107 through transcribe.cpp's `engine_dir` and `model`.
     Whisper { engine_dir: PathBuf, langid: PathBuf },
 }
@@ -36,9 +40,13 @@ impl AcppAsr {
 
     /// The language to send: none for a model that finds it; the chosen one; or the one heard in the recording.
     fn language_for(&self, wav: &Path, lang: &str) -> Result<Option<String>, AsrError> {
-        let Language::Whisper { engine_dir, langid } = &self.language else { return Ok(None) };
-        let err = |e: acpp_server::AcppError| AsrError::Parakeet(e.to_string());
         let chosen = lang.trim();
+        let (engine_dir, langid) = match &self.language {
+            Language::Own => return Ok(None),
+            Language::Told => return Ok(told(chosen)),
+            Language::Whisper { engine_dir, langid } => (engine_dir, langid),
+        };
+        let err = |e: acpp_server::AcppError| AsrError::Parakeet(e.to_string());
         if !chosen.is_empty() && !chosen.eq_ignore_ascii_case("auto") {
             return acpp_server::language::whisper_code(chosen).map(|c| Some(c.to_string())).map_err(err);
         }
@@ -63,6 +71,12 @@ impl AcppAsr {
             .map_err(|e| AsrError::Parakeet(e.to_string()))?;
         Ok(t.words.into_iter().map(|w| Word { word: w.text, start: w.start, end: w.end }).collect())
     }
+}
+
+/// A chosen language as the model is told it; none for «auto» or no choice.
+fn told(chosen: &str) -> Option<String> {
+    let chosen = chosen.trim();
+    (!chosen.is_empty() && !chosen.eq_ignore_ascii_case("auto")).then(|| chosen.to_string())
 }
 
 /// The turn a word belongs to: the one holding its middle, else the nearest by centre.
@@ -113,6 +127,15 @@ impl AsrEngine for AcppAsr {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_told_language_goes_as_chosen_and_auto_goes_unsaid() {
+        assert_eq!(told("ru"), Some("ru".to_string()));
+        assert_eq!(told(" th-TH "), Some("th-TH".to_string()));
+        assert_eq!(told("auto"), None);
+        assert_eq!(told("AUTO"), None);
+        assert_eq!(told(""), None);
+    }
 
     #[test]
     fn a_word_goes_to_the_turn_holding_its_middle_or_the_nearest() {

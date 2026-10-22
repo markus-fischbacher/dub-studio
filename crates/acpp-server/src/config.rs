@@ -85,6 +85,13 @@ impl ModelEntry {
             ..ModelEntry::new(id, "crisperwhisper", model, "asr", Mode::Offline)
         }
     }
+
+    /// Nemotron 3.5 ASR recognition of a whole file, told its language as a locale (`ru-RU`); a recording longer
+    /// than one encoder pass is cut at its quietest points by the model. `gguf` is the model's package or a
+    /// transcribe.cpp GGUF.
+    pub fn nemotron_asr(id: &str, gguf: &Path) -> ModelEntry {
+        ModelEntry::new(id, "nemotron_asr", gguf, "asr", Mode::Offline)
+    }
 }
 
 /// The whole config. `port` is chosen by [`crate::Server::start`].
@@ -155,6 +162,7 @@ mod tests {
                 ModelEntry::higgs_tts("higgs", Path::new("m/higgs-q8_0/q8_0.gguf")),
                 ModelEntry::parakeet_tdt("parakeet", Path::new("m/asr-gguf-parakeet-v3/parakeet-tdt-0.6b-v3-Q8_0.gguf")),
                 ModelEntry::crisperwhisper("crisperwhisper", Path::new("m/crisperwhisper2-turbo")),
+                ModelEntry::nemotron_asr("nemotron", Path::new("m/asr-gguf-nemotron/nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf")),
             ],
             data_dir: PathBuf::from("d"),
             log: false,
@@ -170,5 +178,6 @@ mod tests {
         assert_eq!(m[2]["default_request_options"]["transcription_mode"], "intended");
         assert_eq!(m[2]["default_request_options"]["return_timestamps"], true);
         assert!(m[1].get("default_request_options").is_none());
+        assert_eq!((m[3]["family"].as_str(), m[3]["task"].as_str(), m[3]["mode"].as_str()), (Some("nemotron_asr"), Some("asr"), Some("offline")));
     }
 }
