@@ -466,6 +466,21 @@ type CapsBuffer = [u64; 64];
 /// библиотеки не переживает); смена сборки в настройках берёт другую, уже загруженную или новую.
 static LOADED: Mutex<Vec<(PathBuf, Library, Api)>> = Mutex::new(Vec::new());
 
+/// Opens the engine library so that its own folder is searched for the libraries it needs (cuBLAS lies beside the CUDA
+/// build): plain `LoadLibraryExW(path, 0, 0)` searches the program's folder and PATH, not the library's.
+fn open(path: &Path) -> Result<Library, String> {
+    #[cfg(windows)]
+    {
+        use libloading::os::windows::{Library as WindowsLibrary, LOAD_WITH_ALTERED_SEARCH_PATH};
+        let full = std::path::absolute(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        unsafe { WindowsLibrary::load_with_flags(&full, LOAD_WITH_ALTERED_SEARCH_PATH) }
+            .map(Library::from)
+            .map_err(|e| format!("{}: {e}", full.display()))
+    }
+    #[cfg(not(windows))]
+    unsafe { Library::new(path) }.map_err(|e| format!("{}: {e}", path.display()))
+}
+
 fn library(dir: &Path) -> Result<Api, String> {
     let mut loaded = LOADED.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, _, api)) = loaded.iter().find(|(d, _, _)| d == dir) {
@@ -476,7 +491,7 @@ fn library(dir: &Path) -> Result<Api, String> {
         return Err(format!("transcribe.cpp: the engine is not installed: {}", path.display()));
     }
     Build::Cpu.runs_here()?;
-    let lib = unsafe { Library::new(&path) }.map_err(|e| format!("{}: {e}", path.display()))?;
+    let lib = open(&path)?;
     let api = unsafe {
         macro_rules! sym {
             ($name:literal) => {
@@ -1096,6 +1111,18 @@ mod tests {
             assert_eq!(m.download.sha256.len(), 64, "{}", m.id);
             assert!(m.download.size > 0, "{}", m.id);
         }
+    }
+
+    /// A CUDA build (DUB_TCPP_ENGINE_DIR: transcribe_engine.dll with cuBLAS beside it) loads with PATH holding only
+    /// the system folder.
+    #[test]
+    #[ignore]
+    #[cfg(windows)]
+    fn the_engine_finds_the_libraries_beside_it() {
+        let Ok(dir) = std::env::var("DUB_TCPP_ENGINE_DIR") else { return };
+        let system = std::env::var("SystemRoot").map(|r| format!("{r}\\System32")).unwrap();
+        std::env::set_var("PATH", system);
+        library(Path::new(&dir)).expect("the engine and the libraries beside it");
     }
 
     #[test]
