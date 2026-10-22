@@ -12,6 +12,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **Speech recognition no longer closes the studio on processors without AVX-512** ([#46](https://github.com/timoncool/dub-studio/issues/46)): the transcribe.cpp engine of 4.4.0 was built for the processor it was built on and used AVX-512 instructions, so on most Intel and older AMD processors the first recognition stopped the program without a word, on the card and on the processor alike. The engine is now built for every x86-64 processor with AVX2 (Intel since 2013, AMD since 2017), as fast as before, and on a processor without AVX2 the studio says so instead of closing.
 - **Whisper no longer writes over the silence at the end of a file** ([#45](https://github.com/timoncool/dub-studio/issues/45)): words lying wholly in a silence of the recording (at least 0.3 s, 30 dB under its speech) are dropped, and a word's end stops where the speech does, so "subscribe to the channel" over a file's quiet tail is gone and the last line ends with its voice; the check of the voiced lines by ear reads them the same way.
 
 ## 2026-10-21 — 4.4.0
