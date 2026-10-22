@@ -648,6 +648,7 @@ impl HiggsServer {
             input: text.to_string(),
             voice_ref: Some(acpp_server::VoiceRef::Path(PathBuf::from(ref_wav))),
             reference_text: ref_text.map(str::trim).filter(|t| !t.is_empty()).map(str::to_string),
+            language: None,
             options,
             stall: HIGGS_STALL,
         };

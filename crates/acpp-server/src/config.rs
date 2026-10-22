@@ -99,6 +99,13 @@ impl ModelEntry {
     pub fn nemotron_3_diar(id: &str, model: &Path) -> ModelEntry {
         ModelEntry::new(id, "nemotron_3_diar", model, "diar", Mode::Offline)
     }
+
+    /// Supertonic 3 speech in its preset voices (request options voice_id, num_inference_steps, speed, seed),
+    /// streamed at 44.1 kHz mono. `model` is the model's package or the studios' int8 export folder (onnx/,
+    /// voice_styles/).
+    pub fn supertonic(id: &str, model: &Path) -> ModelEntry {
+        ModelEntry { output_rate: Some(44_100), ..ModelEntry::new(id, "supertonic", model, "tts", Mode::Streaming) }
+    }
 }
 
 /// The whole config. `port` is chosen by [`crate::Server::start`].

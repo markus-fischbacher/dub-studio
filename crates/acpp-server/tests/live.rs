@@ -38,6 +38,7 @@ fn higgs_streams_its_phrase_and_a_stop_ends_it() {
         input: "Hello. This phrase is spoken by Higgs Audio through the audio.cpp server, one piece at a time.".into(),
         voice_ref: Some(VoiceRef::Path(env("ACPP_REF"))),
         reference_text: std::env::var("ACPP_REF_TEXT").ok(),
+        language: None,
         options: serde_json::Map::new(),
         stall: Duration::from_secs(120),
     };
@@ -99,6 +100,7 @@ fn a_stopped_long_phrase_frees_the_model() {
         input: input.into(),
         voice_ref: Some(VoiceRef::Path(env("ACPP_REF"))),
         reference_text: std::env::var("ACPP_REF_TEXT").ok(),
+        language: None,
         options: serde_json::Map::new(),
         stall: Duration::from_secs(120),
     };
@@ -140,6 +142,7 @@ fn higgs_speaks_without_a_reference() {
         input: "This voice is the engine's own, with no reference recording.".into(),
         voice_ref: None,
         reference_text: None,
+        language: None,
         options: serde_json::Map::new(),
         stall: Duration::from_secs(120),
     };

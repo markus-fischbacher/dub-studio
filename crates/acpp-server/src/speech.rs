@@ -24,6 +24,8 @@ pub struct SpeechRequest {
     pub input: String,
     pub voice_ref: Option<VoiceRef>,
     pub reference_text: Option<String>,
+    /// The language of the text, for a model that is told it (Supertonic); `None` for one that finds it.
+    pub language: Option<String>,
     pub options: Map<String, Value>,
     /// The longest wait for the next delta; the first one also waits for a lazy model to load.
     pub stall: Duration,
@@ -137,6 +139,9 @@ impl Server {
         }
         if let Some(t) = &req.reference_text {
             body["reference_text"] = json!(t);
+        }
+        if let Some(l) = &req.language {
+            body["language"] = json!(l);
         }
         if !req.options.is_empty() {
             body["options"] = Value::Object(req.options.clone());
