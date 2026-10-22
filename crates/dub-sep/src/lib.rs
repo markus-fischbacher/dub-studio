@@ -88,6 +88,13 @@ pub fn engine_cli(repo_root: &Path, backend: &str) -> PathBuf {
     dir.join(ENGINE_CLI_FILE)
 }
 
+/// The CLI of a build of the engine by its name (as `acpp_server::asset::Build` names builds): `cuda13` in
+/// tools/bsroformer, `cuda12`, `vulkan` and `cpu` in tools/bsroformer-<build>.
+pub fn engine_cli_of(repo_root: &Path, build: &str) -> PathBuf {
+    let dir = if build == "cuda13" { engine_dir(repo_root) } else { repo_root.join("tools").join(format!("bsroformer-{build}")) };
+    dir.join(ENGINE_CLI_FILE)
+}
+
 /// Резолв GGUF-модели: env DUB_STUDIO_BSROFORMER_MODEL, иначе <repo>/models/bsroformer/<MODEL_FILE>.
 pub fn model_path(repo_root: &Path) -> PathBuf {
     std::env::var("DUB_STUDIO_BSROFORMER_MODEL")
@@ -387,6 +394,16 @@ fn is_cpu_build(cli: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_build_has_its_folder_and_the_processor_build_stays_where_it_was() {
+        let root = Path::new("r");
+        let dir = |b: &str| engine_cli_of(root, b).parent().unwrap().to_path_buf();
+        assert_eq!(dir("cpu"), engine_dir_cpu(root));
+        assert_eq!(dir("cuda12"), root.join("tools").join("bsroformer-cuda12"));
+        assert_eq!(dir("vulkan"), root.join("tools").join("bsroformer-vulkan"));
+        assert!(is_cpu_build(&engine_cli_of(root, "cpu")) && !is_cpu_build(&engine_cli_of(root, "vulkan")));
+    }
 
     #[test]
     fn the_error_line_leads_the_tail() {
