@@ -60,19 +60,19 @@ impl Build {
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine.dll",
-                size: 144_513_536,
-                sha256: "80b90f1294f7d63dfb658fb5ebc6e06627d3d97931a2552bb8553deb7eeb9b52",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine.dll",
+                size: 144_406_016,
+                sha256: "e38b5d275449cd1453e09e1e40560e9da07f8d5715b1bc8403facb3b7b9b9009",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine-vulkan.dll",
-                size: 48_914_432,
-                sha256: "55c1fadb50f74128e796e30f908b833935b4f32a01b8d30efc19baed79a5c5f0",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine-vulkan.dll",
+                size: 48_806_400,
+                sha256: "a82e53b5f09293a6c3577229397a800230bfd0cac821782b1be6e21e576253d5",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine-cpu.dll",
-                size: 3_666_432,
-                sha256: "92511dcc9490fb4deb75c0d31c78de21ee826e50d90db1ffbeeff23865602be4",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine-cpu.dll",
+                size: 3_558_912,
+                sha256: "64df1c98b5b6da2b77e6102f3c852adcb2e285336fc49085f7ee63cfddc0855c",
             },
         }
     }
@@ -100,19 +100,19 @@ impl Build {
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine.so",
-                size: 160_931_720,
-                sha256: "1dff339818952e1cf547d85bb216dae36dccf1d8654612f2197f98a75950368e",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/libtranscribe_engine.so",
+                size: 160_763_128,
+                sha256: "1a41940dc1708520d4cc5ba51ffb31b42d13beb67078d476a179df4b1cc45c5e",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine-vulkan.so",
-                size: 50_963_160,
-                sha256: "029377f780bf97a5c794f7ed12fcac39d318f6c594f0fc2d40b5b2fc58283ec6",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/libtranscribe_engine-vulkan.so",
+                size: 50_802_760,
+                sha256: "b20c17f2eb91a05cc3ab7cd5e90ecaad178cbcc3fcd0bdcc5baad8257ac9382a",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine-cpu.so",
-                size: 5_002_200,
-                sha256: "8120113acb4f9a7b4b6c623e5e758b9260883ab3467eed07f712d6cb28f66c4f",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/libtranscribe_engine-cpu.so",
+                size: 4_837_704,
+                sha256: "9f7904d685a8a4385f436a1af821d1bd2629b1c1af814ea4a5b00deada9513b2",
             },
         }
     }

@@ -203,14 +203,14 @@ mod platform {
     // ggml whole in one library. CUDA 13, sm 75/80/86/89/90/100/120 without PTX, cudart and cuBLAS from cuda-runtime;
     // the CPU build for a computer without a card CUDA 13 runs on.
     pub const TRANSCRIBE_ENGINE: Parts = Parts {
-        size: 144_513_536,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine.dll", dest_rel: "models/transcribe-engine/transcribe_engine.dll", size: 144_513_536, sha256: "80b90f1294f7d63dfb658fb5ebc6e06627d3d97931a2552bb8553deb7eeb9b52", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine/transcribe_engine.dll", expect: 144_513_536 }],
+        size: 144_406_016,
+        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine.dll", dest_rel: "models/transcribe-engine/transcribe_engine.dll", size: 144_406_016, sha256: "e38b5d275449cd1453e09e1e40560e9da07f8d5715b1bc8403facb3b7b9b9009", extract: Extract::None }],
+        markers: &[Marker { rel: "models/transcribe-engine/transcribe_engine.dll", expect: 144_406_016 }],
     };
     pub const TRANSCRIBE_ENGINE_CPU: Parts = Parts {
-        size: 3_666_432,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine-cpu.dll", dest_rel: "models/transcribe-engine-cpu/transcribe_engine.dll", size: 3_666_432, sha256: "92511dcc9490fb4deb75c0d31c78de21ee826e50d90db1ffbeeff23865602be4", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine-cpu/transcribe_engine.dll", expect: 3_666_432 }],
+        size: 3_558_912,
+        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine-cpu.dll", dest_rel: "models/transcribe-engine-cpu/transcribe_engine.dll", size: 3_558_912, sha256: "64df1c98b5b6da2b77e6102f3c852adcb2e285336fc49085f7ee63cfddc0855c", extract: Extract::None }],
+        markers: &[Marker { rel: "models/transcribe-engine-cpu/transcribe_engine.dll", expect: 3_558_912 }],
     };
     pub const HIGGS_ENGINE: Parts = Parts {
         size: 129_390_080,
@@ -358,14 +358,14 @@ mod platform {
     // sm 75/80/86/89/90/100/120, RUNPATH $ORIGIN and ../higgs-engine, where libcudart and libcublas come from
     // cuda-runtime; the CPU build for a computer without a card CUDA 13 runs on.
     pub const TRANSCRIBE_ENGINE: Parts = Parts {
-        size: 160_931_720,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine.so", dest_rel: "models/transcribe-engine/libtranscribe_engine.so", size: 160_931_720, sha256: "1dff339818952e1cf547d85bb216dae36dccf1d8654612f2197f98a75950368e", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine/libtranscribe_engine.so", expect: 160_931_720 }],
+        size: 160_763_128,
+        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/libtranscribe_engine.so", dest_rel: "models/transcribe-engine/libtranscribe_engine.so", size: 160_763_128, sha256: "1a41940dc1708520d4cc5ba51ffb31b42d13beb67078d476a179df4b1cc45c5e", extract: Extract::None }],
+        markers: &[Marker { rel: "models/transcribe-engine/libtranscribe_engine.so", expect: 160_763_128 }],
     };
     pub const TRANSCRIBE_ENGINE_CPU: Parts = Parts {
-        size: 5_002_200,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine-cpu.so", dest_rel: "models/transcribe-engine-cpu/libtranscribe_engine.so", size: 5_002_200, sha256: "8120113acb4f9a7b4b6c623e5e758b9260883ab3467eed07f712d6cb28f66c4f", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine-cpu/libtranscribe_engine.so", expect: 5_002_200 }],
+        size: 4_837_704,
+        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/libtranscribe_engine-cpu.so", dest_rel: "models/transcribe-engine-cpu/libtranscribe_engine.so", size: 4_837_704, sha256: "9f7904d685a8a4385f436a1af821d1bd2629b1c1af814ea4a5b00deada9513b2", extract: Extract::None }],
+        markers: &[Marker { rel: "models/transcribe-engine-cpu/libtranscribe_engine.so", expect: 4_837_704 }],
     };
     pub const HIGGS_ENGINE: Parts = Parts {
         size: 136_774_464,
