@@ -946,6 +946,11 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         let clean16 = paths.work_dir.join("vocals16_clean.wav");
         let stems = paths.work_dir.join("stems");
         let cached_voc = stems.join("vocals.wav");
+        if !cached_voc.is_file() {
+            if let Some(why) = crate::models::gpu_stage_unavailable(&paths.models_root, "sep_backend", &t!("stage-name-sep")) {
+                return Err(why);
+            }
+        }
         let sep_result: Result<std::path::PathBuf, String> = (|| {
             if !cached_voc.is_file() {
                 let audio_hq = paths.work_dir.join("audio_hq.wav");

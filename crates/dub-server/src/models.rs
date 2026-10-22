@@ -240,6 +240,28 @@ pub fn tcpp_build(mroot: &Path) -> dub_asr::tcpp::Build {
     if stage_backend(mroot, "asr_backend") == "cpu" { dub_asr::tcpp::Build::Cpu } else { dub_asr::tcpp::Build::Cuda }
 }
 
+/// Why a local stage set to «GPU (CUDA)» cannot run on this machine: its CUDA build would fall back to the processor
+/// on its own, so the stage stops before it starts and names the reason. None — the stage is not on the GPU or the
+/// card runs the CUDA 13 builds. `stage` is the stage's name for the message.
+pub fn gpu_stage_unavailable(mroot: &Path, key: &str, stage: &str) -> Option<String> {
+    if stage_backend(mroot, key) != "gpu" {
+        return None;
+    }
+    let gpu = crate::hw::gpu_report();
+    if gpu.cuda13_ok {
+        return None;
+    }
+    let card = gpu.summary().unwrap_or_else(|| "-".to_string());
+    let why = match gpu.reason {
+        Some("no_nvidia") => t!("stage-gpu-why-no-nvidia"),
+        Some("no_device") => t!("stage-gpu-why-no-device"),
+        Some("driver_old") => t!("stage-gpu-why-driver-old", card = card, min = gpu.min_driver),
+        Some("gpu_old") => t!("stage-gpu-why-gpu-old", card = card, min = gpu.min_compute.clone()),
+        _ => t!("stage-gpu-why-cuda-init", card = card),
+    };
+    Some(t!("stage-needs-cuda", stage = stage.to_string(), why = why))
+}
+
 /// Глобальный backend локальных стадий (обратная совместимость: пресеты/старые вызовы).
 /// Per-stage: `stage_backend(mroot, "<sep|diar|asr>_backend")`.
 pub fn local_backend(mroot: &Path) -> &'static str {
@@ -683,6 +705,11 @@ pub fn build_engine_hinted(choice: &AsrChoice, prompt: Option<String>) -> Result
     match choice {
         AsrChoice::Ggml { models_root, build, model } => {
             let _ = prompt;
+            if *build == dub_asr::tcpp::Build::Cuda {
+                if let Some(why) = gpu_stage_unavailable(models_root, "asr_backend", &t!("stage-name-asr")) {
+                    return Err(why);
+                }
+            }
             Ok(Box::new(Unloading(dub_asr::tcpp::TcppEngine::new(models_root, *build, model))))
         }
         AsrChoice::CrisperWhisper { repo_root, models_root, backend, build } => {

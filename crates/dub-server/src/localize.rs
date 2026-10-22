@@ -97,6 +97,7 @@ impl Localize for SepError {
             SepError::EngineFailed { code: None, tail } => t!("sep-engine-killed", tail = tail.clone()),
             SepError::NoOutput(path) => t!("sep-no-output", path = shown(path)),
             SepError::Wav(error) => t!("sep-audio-io", error = error.clone()),
+            SepError::FellBackToCpu(why) => t!("sep-fell-back-to-cpu", why = why.clone()),
         }
     }
 }

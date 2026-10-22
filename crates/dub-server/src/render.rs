@@ -1472,6 +1472,9 @@ fn build_dub_pass(
             );
             (cached_voc, Some(cached_inst))
         } else if paths.bsroformer_cli.is_file() && paths.bsroformer_model.is_file() {
+            if let Some(why) = crate::models::gpu_stage_unavailable(&paths.models_root, "sep_backend", &t!("stage-name-sep")) {
+                return Err(why);
+            }
             emit(progress, "separate", &t!("atomic-separating", model = "Mel-Band Roformer voc_fv6-Q8_0"),
             );
             let sep = dub_sep::separate(&audio_hq, &stems, &paths.bsroformer_cli, &paths.bsroformer_model,
@@ -3023,6 +3026,7 @@ pub(crate) fn speaker_voice_clip(
     wd: &Path,
     input: &Path,
     sep: (&Path, &Path),
+    sep_blocked: Option<&str>,
     tmp: &Path,
     out: &Path,
 ) -> Result<Option<String>, VoiceClipError> {
@@ -3035,6 +3039,9 @@ pub(crate) fn speaker_voice_clip(
     let missing: Vec<String> = [sep.0, sep.1].iter().filter(|p| !p.is_file()).map(|p| p.display().to_string()).collect();
     if !missing.is_empty() {
         return Err(VoiceClipError::NoSeparator(missing.join(", ")));
+    }
+    if let Some(why) = sep_blocked {
+        return Err(VoiceClipError::Separation(why.to_string()));
     }
     std::fs::create_dir_all(tmp).map_err(|e| format!("{}: {e}", tmp.display()))?;
     let clip = tmp.join("cut44.wav");
@@ -4590,7 +4597,7 @@ mod tests {
         let mut s = seg("s0", 1.0, 4.0, "x");
         s.src_text = "Одна реплика".into();
         let out = wd.join("voice.wav");
-        let text = speaker_voice_clip(&s, 12.0, &wd, &wd.join("source.mp4"), (&no_engine, &no_engine), &tmp, &out,
+        let text = speaker_voice_clip(&s, 12.0, &wd, &wd.join("source.mp4"), (&no_engine, &no_engine), None, &tmp, &out,
         ).unwrap();
         assert_eq!(text.as_deref(), Some("Одна реплика"), "окно на всю реплику — её текст");
         let r = hound::WavReader::open(&out).unwrap();
@@ -4604,7 +4611,7 @@ mod tests {
         assert!(!tmp.exists(), "вокал проекта есть — отдельной сепарации нет");
 
         let long = seg("s1", 0.5, 15.5, "x");
-        let text = speaker_voice_clip(&long, 12.0, &wd, &wd.join("source.mp4"), (&no_engine, &no_engine), &tmp, &out,
+        let text = speaker_voice_clip(&long, 12.0, &wd, &wd.join("source.mp4"), (&no_engine, &no_engine), None, &tmp, &out,
         ).unwrap();
         assert_eq!(text, None, "урезанное окно без словных таймингов — без текста");
         let r = hound::WavReader::open(&out).unwrap();
@@ -4622,7 +4629,7 @@ mod tests {
         std::fs::write(&model, b"gguf").unwrap();
         let tmp = wd.join("_voicecut");
         let out = wd.join("voice.wav");
-        match speaker_voice_clip(&seg("s0", 1.0, 3.0, "x"), 12.0, &wd, &input, (&no_engine, &model), &tmp, &out,
+        match speaker_voice_clip(&seg("s0", 1.0, 3.0, "x"), 12.0, &wd, &input, (&no_engine, &model), None, &tmp, &out,
         ) {
             Err(VoiceClipError::NoSeparator(missing)) => {
                 assert_eq!(missing, no_engine.display().to_string())
@@ -4645,7 +4652,7 @@ mod tests {
         std::fs::write(&model, b"gguf").unwrap();
         let tmp = wd.join("_voicecut");
         let out = wd.join("voice.wav");
-        match speaker_voice_clip(&seg("s0", 1.0, 3.0, "x"), 12.0, &wd, &input, (&broken, &model), &tmp, &out,
+        match speaker_voice_clip(&seg("s0", 1.0, 3.0, "x"), 12.0, &wd, &input, (&broken, &model), None, &tmp, &out,
         ) {
             Err(VoiceClipError::Separation(e)) => assert!(e.contains("запуск движка сепарации"), "{e}"),
             other => panic!("ждали сбой сепарации: {other:?}"),

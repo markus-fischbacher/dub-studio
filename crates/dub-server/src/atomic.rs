@@ -242,6 +242,9 @@ fn separation(dir: PathBuf, input: PathBuf, cli: PathBuf, model: PathBuf, repo_r
         let cb = |ev: Value| progress(ev);
         crate::ensure_job_components(&repo_root, &models_root, false, false, &cb)?;
         jobs::check_cancelled()?;
+        if let Some(why) = models::gpu_stage_unavailable(&models_root, "sep_backend", &t!("stage-name-sep")) {
+            return Err(why);
+        }
         if !cli.is_file() {
             return Err(format!("the voice separator's engine is not installed ({}): models_status names it, models_download fetches it", cli.display()));
         }

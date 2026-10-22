@@ -1175,7 +1175,8 @@ async fn speaker_voice(
         std::fs::create_dir_all(&voices_dir).map_err(|e| format!("{}: {e}", voices_dir.display()))?;
         let cli = dub_sep::engine_cli(&repo_root, models::stage_backend(&models_root, "sep_backend"),
         );
-        let made = render::speaker_voice_clip(&cand, 12.0, &dir, &input, (&cli, &model), &tmp, &out);
+        let blocked = models::gpu_stage_unavailable(&models_root, "sep_backend", &t!("stage-name-sep"));
+        let made = render::speaker_voice_clip(&cand, 12.0, &dir, &input, (&cli, &model), blocked.as_deref(), &tmp, &out);
         let cleaned =
             if tmp.exists() { std::fs::remove_dir_all(&tmp).map_err(|e| format!("{}: {e}", tmp.display())) } else { Ok(()) };
         let text = made?;

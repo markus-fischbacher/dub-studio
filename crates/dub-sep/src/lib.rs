@@ -32,6 +32,9 @@ pub enum SepError {
     NoOutput(PathBuf),
     #[error("audio I/O: {0}")]
     Wav(String),
+    /// A build for a graphics card ran on the processor: ggml found no device it could use.
+    #[error("the engine's GPU build ran on the CPU: {0}")]
+    FellBackToCpu(String),
 }
 
 impl SepError {
@@ -44,6 +47,7 @@ impl SepError {
             SepError::EngineFailed { .. } => "sep_engine_failed",
             SepError::NoOutput(_) => "sep_no_output",
             SepError::Wav(_) => "sep_audio_io",
+            SepError::FellBackToCpu(_) => "sep_fell_back_to_cpu",
         }
     }
 }
@@ -361,11 +365,23 @@ fn run_cli(cli: &Path, model: &Path, input: &Path, output: &Path) -> Result<(), 
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
     let out = dub_core::proc::output(&mut cmd).map_err(|e| SepError::Spawn(e.to_string()))?;
+    let (stdout, stderr) = (String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
     if !out.status.success() {
-        let tail = engine_tail(&String::from_utf8_lossy(&out.stdout), &String::from_utf8_lossy(&out.stderr));
-        return Err(SepError::EngineFailed { code: out.status.code(), tail });
+        return Err(SepError::EngineFailed { code: out.status.code(), tail: engine_tail(&stdout, &stderr) });
+    }
+    let lines = || stdout.lines().chain(stderr.lines()).map(str::trim);
+    let backend = lines().find_map(|l| l.strip_prefix("Using backend:")).map(str::trim);
+    tracing::info!("BSRoformer {}: backend {}", cli.display(), backend.unwrap_or("not named"));
+    if backend == Some("CPU") && !is_cpu_build(cli) {
+        let why: Vec<&str> = lines().filter(|l| l.starts_with("ggml_cuda_init") || l.starts_with("ggml_vulkan")).collect();
+        return Err(SepError::FellBackToCpu(if why.is_empty() { "Using backend: CPU".to_string() } else { why.join(" | ") }));
     }
     Ok(())
+}
+
+/// The CLI is the processor build (`tools/bsroformer-cpu`); every other build is for a graphics card.
+fn is_cpu_build(cli: &Path) -> bool {
+    cli.parent().and_then(|d| d.file_name()).is_some_and(|n| n == "bsroformer-cpu")
 }
 
 #[cfg(test)]
