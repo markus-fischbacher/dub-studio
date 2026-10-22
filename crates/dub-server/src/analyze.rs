@@ -1157,7 +1157,12 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         }
         // Backend локального ASR (Parakeet onnx CUDA-EP/CPU, Whisper cuda/cpu) — до создания движка/сессии.
         std::env::set_var("DUB_ASR_BACKEND", crate::models::stage_backend(&paths.models_root, "asr_backend"));
-        let mut asr = crate::models::build_engine(&paths.asr)?;
+        // Термины глоссария проекта (с прошлого анализа) — подсказка распознавателю, как их писать.
+        let hint = std::fs::read_to_string(paths.work_dir.join("project.json"))
+            .ok()
+            .and_then(|text| Project::from_json(&text).ok())
+            .and_then(|p| crate::glossary_api::asr_hint(&p.glossary));
+        let mut asr = crate::models::build_engine_hinted(&paths.asr, hint)?;
         let turns: &[dub_asr::Turn] = diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]);
         let nsp = diar.as_ref().map(|d| d.n_speakers).unwrap_or(1).max(1);
         emit(

@@ -674,15 +674,24 @@ impl dub_asr::AsrEngine for ServerUnloading {
 /// Построить ASR-движок из выбора (boxed trait-object): analyze не знает деталей резолва. CrisperWhisper поднимает
 /// audiocpp_server, и его отказ — ошибка с причиной.
 pub fn build_engine(choice: &AsrChoice) -> Result<Box<dyn dub_asr::AsrEngine>, String> {
+    build_engine_hinted(choice, None)
+}
+
+/// [`build_engine`] with words and spellings to expect in the recording (CrisperWhisper's context text; Parakeet
+/// takes none).
+pub fn build_engine_hinted(choice: &AsrChoice, prompt: Option<String>) -> Result<Box<dyn dub_asr::AsrEngine>, String> {
     match choice {
-        AsrChoice::Ggml { models_root, build, model } => Ok(Box::new(Unloading(dub_asr::tcpp::TcppEngine::new(models_root, *build, model)))),
+        AsrChoice::Ggml { models_root, build, model } => {
+            let _ = prompt;
+            Ok(Box::new(Unloading(dub_asr::tcpp::TcppEngine::new(models_root, *build, model))))
+        }
         AsrChoice::CrisperWhisper { repo_root, models_root, backend, build } => {
             let server = crate::acpp::server(repo_root, models_root, crate::acpp::backend(backend), crate::acpp::CRISPERWHISPER)?;
             let language = dub_asr::acpp::Language::Whisper {
                 engine_dir: dub_asr::tcpp::engine_dir(models_root, *build),
                 langid: dub_asr::tcpp::helper_path(models_root, &dub_asr::tcpp::LANGID),
             };
-            Ok(Box::new(ServerUnloading(dub_asr::acpp::AcppAsr::new(server, crate::acpp::CRISPERWHISPER, language))))
+            Ok(Box::new(ServerUnloading(dub_asr::acpp::AcppAsr::new(server, crate::acpp::CRISPERWHISPER, language).with_prompt(prompt))))
         }
     }
 }

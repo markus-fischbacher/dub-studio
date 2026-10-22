@@ -20,11 +20,18 @@ pub struct AcppAsr {
     server: Arc<Server>,
     model: String,
     language: Language,
+    prompt: Option<String>,
 }
 
 impl AcppAsr {
     pub fn new(server: Arc<Server>, model: &str, language: Language) -> AcppAsr {
-        AcppAsr { server, model: model.to_string(), language }
+        AcppAsr { server, model: model.to_string(), language, prompt: None }
+    }
+
+    /// Words and spellings to expect in the recording; CrisperWhisper takes them as its context text.
+    pub fn with_prompt(mut self, prompt: Option<String>) -> Self {
+        self.prompt = prompt.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+        self
     }
 
     /// The language to send: none for a model that finds it; the chosen one; or the one heard in the recording.
@@ -49,7 +56,7 @@ impl AcppAsr {
                 model: self.model.clone(),
                 wav: wav.to_path_buf(),
                 language,
-                prompt: None,
+                prompt: self.prompt.clone(),
                 options: serde_json::Map::new(),
                 within: None,
             })
