@@ -115,9 +115,6 @@ const VARIANT_SLOT: Record<string, [string, string]> = {
   parakeet: ["asr", "int8"], "parakeet-ultra": ["asr", "ultra-int8"],
   gemma: ["mt", "q4_0"], "gemma-q5_0": ["mt", "q5_0"], "gemma-q6_k": ["mt", "q6_k"], "gemma-q8_0": ["mt", "q8_0"],
   roformer: ["sep", "Q8_0"], "roformer-q5": ["sep", "Q5_0"], "roformer-q4": ["sep", "Q4_0"],
-  "whisper-tiny": ["whisper_model", "tiny"], "whisper-base": ["whisper_model", "base"],
-  "whisper-small": ["whisper_model", "small"], "whisper-medium": ["whisper_model", "medium"],
-  "whisper-large-v3": ["whisper_model", "large-v3"], "whisper-large-v3-turbo": ["whisper_model", "large-v3-turbo"],
 };
 // Какой из ids сейчас активен по выбору (active.json из capabilities.selection).
 const activeVariantId = (ids: string[], sel: Selection): string | undefined =>
@@ -152,10 +149,9 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   const { t } = useTranslation();
   const errText = useDownloadErrorText();
   const gpuReasonText = useGpuReasonText();
-  // Выбор ASR-движка (parakeet|whisper) + квант Whisper (compute) — из capabilities.selection.
+  // Выбор ASR-движка (parakeet | whisper = CrisperWhisper) — из capabilities.selection.
   const [cap, setCap] = useState<Capabilities | null>(null);
   const [asrEngine, setAsrEngine] = useState<string>("parakeet");
-  const [whisperCompute, setWhisperCompute] = useState<string>("int8");
   // Выбор варианта в дропдаунах поднят СЮДА (а не в локальный useState VariantPicker) — иначе ре-рендер
   // секции ремаунтил пикер и сбрасывал выбор на дефолт. Ключ = ids[0] группы.
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -167,7 +163,6 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   const loadCap = () => api.capabilities().then((c) => {
     setCap(c);
     setAsrEngine(slot(c.selection, "asr_engine") ?? "parakeet");
-    setWhisperCompute(slot(c.selection, "whisper_compute") ?? "int8");
   }).catch(() => {});
   // Статус компонентов + фоновая закачка (опрос, пока она идёт). Скачанный вариант становится активным на
   // бэке — после закачки перечитываем выбор.
@@ -462,7 +457,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
       <Group label={t("settings.roleAsr")}>
         {/* Движок ASR: Parakeet-TDT (GPU, дефолт) / Whisper (локально, CPU) / OpenRouter (облако). */}
         <div className="flex gap-1 mb-1.5">
-          {[{ id: "parakeet", label: "Parakeet-TDT", cloud: false }, { id: "whisper", label: "Whisper", cloud: false }, { id: "openrouter", label: "OpenRouter", cloud: true }].map((e) => {
+          {[{ id: "parakeet", label: "Parakeet-TDT", cloud: false }, { id: "whisper", label: "CrisperWhisper", cloud: false }, { id: "openrouter", label: "OpenRouter", cloud: true }].map((e) => {
             const asrCloud = selv("or_asr_on") === "1";
             const active = e.cloud ? asrCloud : (!asrCloud && asrEngine === e.id);
             const dis = e.cloud && !hasOrKey;
@@ -488,22 +483,8 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           </>
         ) : (
           <>
-            {rowOf("whisper-engine")}
-            <VariantPicker base={t("settings.whisperModel")} ids={["whisper-tiny", "whisper-base", "whisper-small", "whisper-medium", "whisper-large-v3", "whisper-large-v3-turbo"]} />
-            {/* Квант Whisper (compute_type) — точность/скорость вычислений, без отдельной скачки. */}
-            <div className="px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
-              <div className="flex items-center gap-2.5">
-                <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--color-accent)]" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[12px] font-medium truncate">{t("settings.whisperCompute")}</div>
-                  <div className="mono text-[10px] text-[var(--color-muted)] truncate">{t("settings.whisperComputeHint")}</div>
-                </div>
-                <select value={whisperCompute} onChange={(e) => { setWhisperCompute(e.target.value); api.setSelection("whisper_compute", e.target.value).catch(() => {}); }}
-                  className="shrink-0 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md px-2 py-1 text-[11px] mono focus:border-[var(--color-accent)] focus:outline-none">
-                  {(cap?.whisper_computes ?? ["int8", "int8_float16", "int8_float32"]).map((q) => <option key={q} value={q}>{q}</option>)}
-                </select>
-              </div>
-            </div>
+            {rowOf("crisperwhisper-turbo")}
+            {rowOf("langid")}
           </>
         )}
       </Group>
@@ -4142,14 +4123,13 @@ const QUANT_GROUP: Record<string, string> = {
   parakeet: "parakeet", "parakeet-ultra": "parakeet",
   roformer: "roformer", "roformer-q5": "roformer", "roformer-q4": "roformer",
   "qwen3-tts": "qwen3", "qwen3-tts-q8_0": "qwen3",
-  "whisper-tiny": "whisper", "whisper-base": "whisper", "whisper-small": "whisper", "whisper-medium": "whisper",
-  "whisper-large-v3": "whisper", "whisper-large-v3-turbo": "whisper",
+  "crisperwhisper-turbo": "whisper",
 };
 
 // Engines, runtimes and libraries: the studio takes them for the models chosen and for this computer's card, so they
 // are not a choice on the first-run screen.
 const SERVICE = new Set([
-  "higgs-engine", "qwen3-tts-engine", "transcribe-engine", "transcribe-engine-cpu", "whisper-engine", "whisper-cuda",
+  "higgs-engine", "qwen3-tts-engine", "transcribe-engine", "transcribe-engine-cpu", "langid",
   "bsroformer-engine", "bsroformer-engine-cpu", "llama", "onnxruntime", "onnxruntime-gpu", "ffmpeg", "cuda-runtime", "cudnn",
   "vcruntime",
 ]);
@@ -4165,7 +4145,7 @@ function needs(id: string, s: SetupStatus): string[] {
   if (id.startsWith("higgs")) return ["higgs-engine"];
   if (id.startsWith("qwen3-tts")) return ["qwen3-tts-engine"];
   if (id.startsWith("parakeet")) return [build("transcribe-engine", "transcribe-engine-cpu")];
-  if (QUANT_GROUP[id] === "whisper") return s.gpu?.nvidia ? ["whisper-engine", "whisper-cuda"] : ["whisper-engine"];
+  if (QUANT_GROUP[id] === "whisper") return ["langid", build("transcribe-engine", "transcribe-engine-cpu")];
   if (id.startsWith("roformer")) return [build("bsroformer-engine", "bsroformer-engine-cpu")];
   if (id.startsWith("gemma")) return ["llama"];
   return [];

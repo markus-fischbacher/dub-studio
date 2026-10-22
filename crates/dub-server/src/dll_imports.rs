@@ -118,9 +118,6 @@ pub const ENTRY_POINTS: &[(&str, &str)] = &[
     ("bsroformer-engine", "tools/bsroformer/ggml-cuda.dll"),
     ("bsroformer-engine-cpu", "tools/bsroformer-cpu/bs_roformer-cli.exe"),
     ("ffmpeg", "tools/ffmpeg/ffmpeg.exe"),
-    ("whisper-cuda", "tools/whisper/cublas64_11.dll"),
-    ("whisper-cuda", "tools/whisper/cudnn_ops_infer64_8.dll"),
-    ("whisper-cuda", "tools/whisper/cudnn_cnn_infer64_8.dll"),
 ];
 
 /// Итог проверки одной точки входа.
@@ -227,8 +224,8 @@ mod tests {
 
     /// Библиотеки, которые точка входа берёт из ЧУЖОГО компонента: (кто грузит, DLL, кто её ставит, грузится ли
     /// она LoadLibrary'ем во время работы). Таблицу импорта сняли с настоящих архивов
-    /// (scripts/check-dll-imports.ps1, dumpbin /DEPENDENTS); cuDNN и cuFFT CUDA-провайдер onnxruntime, а cuBLAS и
-    /// cuDNN 8 — CTranslate2 внутри whisper-faster.exe грузят сами, в таблице импорта их нет.
+    /// (scripts/check-dll-imports.ps1, dumpbin /DEPENDENTS); cuDNN и cuFFT CUDA-провайдер onnxruntime грузит сам,
+    /// в таблице импорта их нет.
     const CROSS_COMPONENT: &[(&str, &str, &str, bool)] = &[
         ("llama", "cublas64_13.dll", "cuda-runtime", false),
         ("llama", "cublasLt64_13.dll", "cuda-runtime", false),

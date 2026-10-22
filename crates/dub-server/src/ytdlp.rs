@@ -641,9 +641,7 @@ pub fn kill_tree(pid: u32) {
         i += 1;
     }
     for p in family.iter().skip(1).rev() {
-        if let Some(proc_) = sys.process(*p) {
-            proc_.kill();
-        }
+        crate::jobs::kill_pid(p.as_u32());
     }
     let deadline = Instant::now() + Duration::from_secs(3);
     while Instant::now() < deadline {
@@ -653,8 +651,8 @@ pub fn kill_tree(pid: u32) {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    if let Some(proc_) = sys.process(root) {
-        proc_.kill();
+    if sys.process(root).is_some() {
+        crate::jobs::kill_pid(pid);
     }
 }
 

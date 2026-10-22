@@ -894,6 +894,7 @@ dependencies = [
 name = "dub-asr"
 version = "2.0.0"
 dependencies = [
+ "acpp-server",
  "audioadapter",
  "audioadapter-buffers",
  "dub-core",
@@ -986,9 +987,9 @@ dependencies = [
 name = "dub-server"
 version = "2.0.0"
 dependencies = [
+ "acpp-server",
  "anyhow",
  "async-stream",
- "audiocpp",
  "axum",
  "base64 0.23.1",
  "blake3",

@@ -134,20 +134,7 @@ pub fn component_selection(id: &str) -> Vec<(&'static str, String)> {
         SUPERTONIC_TTS => vec![("tts", SUPERTONIC_TTS.into())],
         "parakeet" => vec![("asr_engine", "parakeet".into()), ("asr", "int8".into())],
         "parakeet-ultra" => vec![("asr_engine", "parakeet".into()), ("asr", "ultra-int8".into())],
-        "whisper-tiny" => vec![("asr_engine", "whisper".into()), ("whisper_model", "tiny".into()),
-        ],
-        "whisper-base" => vec![("asr_engine", "whisper".into()), ("whisper_model", "base".into()),
-        ],
-        "whisper-small" => vec![("asr_engine", "whisper".into()), ("whisper_model", "small".into()),
-        ],
-        "whisper-medium" => vec![("asr_engine", "whisper".into()), ("whisper_model", "medium".into()),
-        ],
-        "whisper-large-v3" => vec![("asr_engine", "whisper".into()), ("whisper_model", "large-v3".into()),
-        ],
-        "whisper-large-v3-turbo" => {
-            vec![("asr_engine", "whisper".into()), ("whisper_model", "large-v3-turbo".into()),
-            ]
-        }
+        "crisperwhisper-turbo" => vec![("asr_engine", "whisper".into())],
         "gemma" => vec![("mt", "q4_0".into())],
         "gemma-q5_0" => vec![("mt", "q5_0".into())],
         "gemma-q6_k" => vec![("mt", "q6_k".into())],
@@ -164,7 +151,7 @@ pub fn component_selection(id: &str) -> Vec<(&'static str, String)> {
 pub fn is_selection_key(key: &str) -> bool {
     crate::checks::is_switch(key) || matches!(
         key,
-        "tts" | "asr" | "mt" | "sep" | "asr_engine" | "whisper_model" | "whisper_compute" | "whisper_device"
+        "tts" | "asr" | "mt" | "sep" | "asr_engine"
             // Backend КАЖДОЙ локальной стадии независимо (auto|gpu|cpu): любой движок на любой инстанс.
             // gpu = CUDA, cpu = без NVIDIA. sep=сепарация(BSRoformer CUDA/CPU-сборка), diar=диаризация
             // (Sortformer onnx CUDA-EP/CPU), asr=локальный ASR (Parakeet onnx / Whisper CTranslate2).
@@ -555,13 +542,14 @@ pub fn higgs_ref_secs(mroot: &Path) -> f64 {
     sel_num(mroot, "higgs_ref_secs").filter(|s| *s > 0.0 && *s <= 60.0).unwrap_or(12.0)
 }
 
-/// Выбор ASR-движка для одной джобы: Parakeet на transcribe.cpp (GGUF) либо Whisper (бинарь + модель + квант + девайс).
+/// Выбор ASR-движка для одной джобы: Parakeet на transcribe.cpp (GGUF) либо CrisperWhisper в audiocpp_server.
 #[derive(Debug, Clone)]
 pub enum AsrChoice {
     /// A GGUF model run by transcribe.cpp (`dub_asr::tcpp`), on the build of the recognition backend.
     Ggml { models_root: PathBuf, build: dub_asr::tcpp::Build, model: &'static dub_asr::tcpp::Model },
-    Whisper { bin: PathBuf, model_dir: PathBuf, model: String, compute: String, device: String,
-    },
+    /// CrisperWhisper 2.0 turbo in the studio's audiocpp_server on the recognition backend; the language of «auto» is
+    /// heard by VoxLingua107 on the transcribe.cpp build of that backend.
+    CrisperWhisper { repo_root: PathBuf, models_root: PathBuf, backend: &'static str, build: dub_asr::tcpp::Build },
 }
 
 impl AsrChoice {
@@ -572,14 +560,12 @@ impl AsrChoice {
     pub fn describe(&self) -> String {
         match self {
             AsrChoice::Ggml { model, .. } => format!("transcribe.cpp ({})", model.file),
-            AsrChoice::Whisper { model, compute, device, .. } => {
-                format!("Whisper {model} (compute={compute}, device={device})")
-            }
+            AsrChoice::CrisperWhisper { backend, .. } => format!("CrisperWhisper 2.0 turbo (intended, {backend})"),
         }
     }
 
-    /// What the window names as the recogniser: the model, its quantization and the transcribe.cpp build, or Whisper's
-    /// model and compute.
+    /// What the window names as the recogniser: the model, its quantization and the transcribe.cpp build, or
+    /// CrisperWhisper and where it runs.
     pub fn label(&self) -> String {
         match self {
             AsrChoice::Ggml { model, build, .. } => {
@@ -591,7 +577,7 @@ impl AsrChoice {
                 };
                 format!("{} {quant} ({on})", model.name)
             }
-            AsrChoice::Whisper { model, compute, .. } => format!("Whisper {model} {compute}"),
+            AsrChoice::CrisperWhisper { backend, .. } => format!("CrisperWhisper 2.0 turbo ({})", if *backend == "cpu" { "CPU" } else { "CUDA" }),
         }
     }
 
@@ -599,7 +585,11 @@ impl AsrChoice {
     pub fn knows(&self, lang: &str) -> bool {
         match self {
             AsrChoice::Ggml { model, .. } => dub_asr::tcpp::knows(model, lang),
-            AsrChoice::Whisper { .. } => true,
+            AsrChoice::CrisperWhisper { .. } => {
+                let l = lang.trim().to_ascii_lowercase();
+                let primary = l.split(['-', '_']).next().unwrap_or("");
+                primary.is_empty() || primary == "auto" || acpp_server::language::whisper_code(primary).is_ok()
+            }
         }
     }
 
@@ -609,111 +599,27 @@ impl AsrChoice {
     }
 }
 
-/// Путь к бинарю Whisper: env DUB_STUDIO_WHISPER_BIN, иначе приоритетом XXL-сборка
-/// (<repo>/tools/whisper/Faster-Whisper-XXL/faster-whisper-xxl.exe — свежий движок, CUDA-DLL в
-/// комплекте (_xxl_data), умеет --batched), фолбэк — старый onefile whisper-faster.exe (CPU).
-pub fn whisper_bin(repo_root: &Path) -> PathBuf {
-    if let Ok(p) = std::env::var("DUB_STUDIO_WHISPER_BIN") {
-        return PathBuf::from(p);
-    }
-    let wdir = repo_root.join("tools").join("whisper");
-    if cfg!(windows) {
-        let xxl = wdir.join("Faster-Whisper-XXL").join("faster-whisper-xxl.exe");
-        if xxl.is_file() {
-            return xxl;
-        }
-        return wdir.join("whisper-faster.exe");
-    }
-    wdir.join("whisper-faster")
+/// Скачан ли CrisperWhisper (папка репозитория Hugging Face как есть).
+fn crisperwhisper_installed(mroot: &Path) -> bool {
+    mroot.join(crate::acpp::CRISPERWHISPER_DIR).join("model.safetensors").is_file()
 }
 
-/// Каталог Whisper-моделей: <mroot>/whisper (внутри — faster-whisper-<size>). Есть ли модель на диске.
-fn whisper_model_installed(mroot: &Path, size: &str) -> bool {
-    mroot.join("whisper").join(format!("faster-whisper-{size}")).join("model.bin").is_file()
-}
-
-/// Резолв активного ASR: если выбран движок whisper И бинарь+модель на диске — Whisper (модель = выбор,
-/// иначе первый установленный по убыванию качества); иначе — Parakeet (существующий резолв каталога TDT).
-/// Так «выбрал Whisper + скачал модель» применяется без рестарта, а недо-настроенный Whisper тихо
-/// откатывается на Parakeet (analyze не падает).
+/// Резолв активного ASR: выбран движок whisper и CrisperWhisper скачан — CrisperWhisper на бэкенде стадии
+/// распознавания; иначе — Parakeet (вариант из настроек). Нескачанный CrisperWhisper задача докачивает до
+/// распознавания (ensure_job_components), так что к резолву внутри задачи он уже на диске.
 pub fn resolve_asr_choice(repo_root: &Path, mroot: &Path, sel: &Value) -> AsrChoice {
-    if pick(sel, "asr_engine") == Some("whisper") {
-        let bin = whisper_bin(repo_root);
-        // выбранная модель, если скачана; иначе — лучшая из установленных.
-        let want = pick(sel, "whisper_model").filter(|m| whisper_model_installed(mroot, m));
-        let model = want.map(String::from).or_else(|| {
-            ["large-v3-turbo", "large-v3", "medium", "small", "base", "tiny",
-            ]
-                .into_iter()
-                .find(|m| whisper_model_installed(mroot, m))
-                .map(String::from)
-        });
-        if let (true, Some(model)) = (bin.is_file(), model) {
-            // Девайс Whisper: авто по ФАКТУ наличия CUDA-либ. whisper-faster (CTranslate2, CUDA 11)
-            // требует cublas64_11 + cudnn8 РЯДОМ С EXE (официальный Purfview: GPU execution requires
-            // cuBLAS and cuDNN libs next to the executable). CUDA-13 DLL Higgs'а ему не подходят —
-            // имена версионные (cublas64_13 ≠ cublas64_11), cuDNN в дистрибутиве нет вообще. Поэтому:
-            // либы лежат -> cuda (GPU в разы быстрее на длинных), нет -> честный cpu БЕЗ попыток и
-            // фолбэков. Явная настройка whisper_device перекрывает авто-детект.
-            // Backend стадии ASR перекрывает авто: cpu -> строго cpu; иначе cuda если либы рядом.
-            let auto_dev = if stage_backend(mroot, "asr_backend") == "cpu" {
-                "cpu"
-            } else if whisper_cuda_libs_present(&bin) {
-                "cuda"
-            } else {
-                "cpu"
-            };
-            let device = pick(sel, "whisper_device").unwrap_or(auto_dev).to_string();
-            // Квант: веса int8 на обоих устройствах, на GPU активации в float16.
-            let mut compute = pick(sel, "whisper_compute")
-                .filter(|c| c.starts_with("int8"))
-                .unwrap_or(if device == "cuda" { "int8_float16" } else { "int8" })
-                .to_string();
-            // ГАРД: float16/bfloat16 не поддерживаются на CPU — CTranslate2 роняет процесс с
-            // "Requested float16 compute type, but the target device do not support efficient float16".
-            // На cpu коэрсим GPU-only кванты в безопасный int8, чтобы транскрипция не падала.
-            if device == "cpu"
-                && matches!(compute.as_str(), "float16" | "bfloat16" | "int8_float16" | "int8_bfloat16")
-            {
-                compute = "int8".to_string();
-            }
-            return AsrChoice::Whisper { bin, model_dir: mroot.join("whisper"), model, compute, device,
-            };
-        }
+    if pick(sel, "asr_engine") == Some("whisper") && crisperwhisper_installed(mroot) {
+        return AsrChoice::CrisperWhisper {
+            repo_root: repo_root.to_path_buf(),
+            models_root: mroot.to_path_buf(),
+            backend: stage_backend(mroot, "asr_backend"),
+            build: tcpp_build(mroot),
+        };
     }
     let model = dub_asr::tcpp::chosen(pick(sel, "asr_engine").unwrap_or(""), pick(sel, "asr"))
         .or_else(|| dub_asr::tcpp::model("parakeet-v3"))
         .expect("parakeet-v3 is in dub_asr::tcpp::MODELS");
     AsrChoice::Ggml { models_root: mroot.to_path_buf(), build: tcpp_build(mroot), model }
-}
-
-/// Лежат ли рядом с whisper-faster.exe CUDA-библиотеки CTranslate2 (cuBLAS 11/12 + cuDNN).
-/// Ровно те имена, что требует движок; без них cuda-запуск гарантированно падает.
-/// XXL-сборка — self-contained: cublas64_12 + cudnn64_8 лежат внутри её _xxl_data (проверено по
-/// содержимому архива r245.4) -> для неё сразу true.
-fn whisper_cuda_libs_present(bin: &std::path::Path) -> bool {
-    if bin
-        .file_name()
-        .and_then(|s| s.to_str())
-        .is_some_and(|n| n.eq_ignore_ascii_case("faster-whisper-xxl.exe"))
-    {
-        return true;
-    }
-    let Some(dir) = bin.parent() else { return false;
-    };
-    if !cfg!(windows) {
-        return dir.join("libcublas.so.11").is_file() && dir.join("libcudnn.so.8").is_file();
-    }
-    let cublas = dir.join("cublas64_11.dll").is_file() || dir.join("cublas64_12.dll").is_file();
-    let cudnn = std::fs::read_dir(dir)
-        .map(|rd| {
-            rd.flatten().any(|e| {
-                let n = e.file_name().to_string_lossy().to_lowercase();
-                n.starts_with("cudnn") && n.ends_with(".dll")
-            })
-        })
-        .unwrap_or(false);
-    cublas && cudnn
 }
 
 /// Распознаватель transcribe.cpp задачи: модель из кэша процесса выгружается, когда задача отпускает движок, чтобы
@@ -741,13 +647,43 @@ impl dub_asr::AsrEngine for Unloading {
     }
 }
 
-/// Построить ASR-движок из выбора (boxed trait-object): analyze не знает деталей резолва.
-pub fn build_engine(choice: &AsrChoice) -> Box<dyn dub_asr::AsrEngine> {
+/// CrisperWhisper of a job: its weights leave the card when the job lets the recogniser go, the server stays.
+struct ServerUnloading(dub_asr::acpp::AcppAsr);
+
+impl Drop for ServerUnloading {
+    fn drop(&mut self) {
+        crate::acpp::unload(&[crate::acpp::CRISPERWHISPER]);
+    }
+}
+
+impl dub_asr::AsrEngine for ServerUnloading {
+    fn transcribe(&mut self, wav: &Path, lang: &str) -> Result<Vec<dub_asr::Segment>, dub_asr::AsrError> {
+        self.0.transcribe(wav, lang)
+    }
+    fn transcribe_turns(&mut self, wav: &Path, turns: &[dub_asr::Turn], lang: &str) -> Result<Vec<dub_asr::SpeakerSegment>, dub_asr::AsrError> {
+        self.0.transcribe_turns(wav, turns, lang)
+    }
+    fn transcribe_many(&mut self, files: &[PathBuf], lang: &str) -> Vec<Result<String, dub_asr::AsrError>> {
+        self.0.transcribe_many(files, lang)
+    }
+    fn transcribe_many_words(&mut self, files: &[PathBuf], lang: &str) -> Vec<Result<Vec<dub_asr::Word>, dub_asr::AsrError>> {
+        self.0.transcribe_many_words(files, lang)
+    }
+}
+
+/// Построить ASR-движок из выбора (boxed trait-object): analyze не знает деталей резолва. CrisperWhisper поднимает
+/// audiocpp_server, и его отказ — ошибка с причиной.
+pub fn build_engine(choice: &AsrChoice) -> Result<Box<dyn dub_asr::AsrEngine>, String> {
     match choice {
-        AsrChoice::Ggml { models_root, build, model } => Box::new(Unloading(dub_asr::tcpp::TcppEngine::new(models_root, *build, model))),
-        AsrChoice::Whisper { bin, model_dir, model, compute, device,
-        } => Box::new(dub_asr::WhisperAsr::new(bin, model_dir, model, compute, device,
-        )),
+        AsrChoice::Ggml { models_root, build, model } => Ok(Box::new(Unloading(dub_asr::tcpp::TcppEngine::new(models_root, *build, model)))),
+        AsrChoice::CrisperWhisper { repo_root, models_root, backend, build } => {
+            let server = crate::acpp::server(repo_root, models_root, crate::acpp::backend(backend), crate::acpp::CRISPERWHISPER)?;
+            let language = dub_asr::acpp::Language::Whisper {
+                engine_dir: dub_asr::tcpp::engine_dir(models_root, *build),
+                langid: dub_asr::tcpp::helper_path(models_root, &dub_asr::tcpp::LANGID),
+            };
+            Ok(Box::new(ServerUnloading(dub_asr::acpp::AcppAsr::new(server, crate::acpp::CRISPERWHISPER, language))))
+        }
     }
 }
 
@@ -981,17 +917,10 @@ mod resolve_live_tests {
         let choice = resolve_asr_choice(repo, &mroot, &sel);
         eprintln!("sel = {}", redact_selection(&sel, false, false));
         eprintln!("resolved = {}", choice.describe());
-        // Ассертим Whisper только когда он РЕАЛЬНО установлен: резолв по контракту тихо откатывается
-        // на Parakeet без бинаря/модели (ревью: иначе тест ложно валится на машине без whisper).
-        let whisper_ready = whisper_bin(repo).is_file()
-            && ["large-v3-turbo", "large-v3", "medium", "small", "base", "tiny",
-            ]
-                .iter()
-                .any(|m| whisper_model_installed(&mroot, m));
-        if pick(&sel, "asr_engine") == Some("whisper") && whisper_ready {
+        if pick(&sel, "asr_engine") == Some("whisper") && crisperwhisper_installed(&mroot) {
             assert!(
-                choice.describe().starts_with("Whisper"),
-                "active.json просит whisper (и он установлен), но резолв дал: {}", choice.describe()
+                choice.describe().starts_with("CrisperWhisper"),
+                "active.json просит whisper (и CrisperWhisper скачан), но резолв дал: {}", choice.describe()
             );
         }
     }

@@ -12,11 +12,11 @@
 //! не-dirty переиспользуются, dirty пере-синтезируются (улучшение против питон-_regen_dub, что гнал
 //! весь дубляж заново — правка #10). tgt-текст пустой -> сегмент молчит (как в питоне).
 
-use audiocpp::AudiocppEngine;
 use dub_captions::{BlurBox, Sub, SubStyle as CapSubStyle, Title as CapTitle};
 use dub_core::{Project, SubStyle as CoreSubStyle, Title as CoreTitle};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
@@ -80,13 +80,11 @@ pub struct RenderPaths {
     pub output: PathBuf,       // output.mp4
     pub bsroformer_cli: PathBuf,
     pub bsroformer_model: PathBuf,
-    pub higgs_dll: PathBuf,
+    pub repo_root: PathBuf,    // корень студии: программа audiocpp_server и её журнал
     pub higgs_model_root: PathBuf,
     pub higgs_quant: String,   // квант выбранного варианта Higgs (q8_0/q6_k/q4_k_m) — для audiocpp load_model
     pub fonts_dir: PathBuf,
     pub higgs_backend: String, // "cuda" | "cpu"
-    pub higgs_device: i32,
-    pub higgs_threads: i32,
     pub max_stretch: f64,
     pub voices_dir: PathBuf,   // каталог голосов-паков + записей с микрофона
     pub asr: crate::models::AsrChoice, // выбранный ASR-движок — авто-транскрипция реф-клипа (ref_text клона)
@@ -588,7 +586,7 @@ fn voice_clone_guarded(
     }
 }
 
-fn load_higgs(paths: &RenderPaths) -> Result<AudiocppEngine, String> {
+fn load_higgs(paths: &RenderPaths) -> Result<HiggsServer, String> {
     if paths.higgs_backend == "cuda" {
         let gpu = crate::hw::gpu_report();
         if !gpu.cuda13_ok {
@@ -600,16 +598,74 @@ fn load_higgs(paths: &RenderPaths) -> Result<AudiocppEngine, String> {
             });
         }
     }
-    let e = AudiocppEngine::load(&paths.higgs_dll).map_err(|e| t!("render-higgs-load-failed", error = e.localize()))?;
-    e.load_model(
-        &paths.higgs_model_root,
-        &paths.higgs_backend,
-        paths.higgs_device,
-        paths.higgs_threads,
-        Some(paths.higgs_quant.as_str()),
-    )
-    .map_err(|e| t!("render-higgs-model-failed", error = e.localize()))?;
-    Ok(e)
+    let backend = crate::acpp::backend(if paths.higgs_backend == "cpu" { "cpu" } else { "gpu" });
+    let server = crate::acpp::server(&paths.repo_root, &paths.models_root, backend, crate::acpp::HIGGS)
+        .map_err(|e| t!("render-higgs-load-failed", error = e))?;
+    Ok(HiggsServer { server, cancel: Arc::new(AtomicBool::new(false)), running: Arc::new(AtomicBool::new(false)) })
+}
+
+/// The longest wait for the next piece of a Higgs phrase; the first one also waits for the model to load.
+const HIGGS_STALL: Duration = Duration::from_secs(90);
+/// After a cancel, how long a phrase may go on before its server is stopped (the stream ends at its next delta).
+const HIGGS_CANCEL_GRACE: Duration = Duration::from_secs(5);
+
+/// Higgs Audio v3 in the studio's audiocpp_server, spoken as a stream and put together.
+pub struct HiggsServer {
+    server: Arc<acpp_server::Server>,
+    cancel: Arc<AtomicBool>,
+    running: Arc<AtomicBool>,
+}
+
+/// Done with Higgs: its weights leave the card (recognition and the next stages take it), the server stays.
+impl Drop for HiggsServer {
+    fn drop(&mut self) {
+        crate::acpp::unload(&[crate::acpp::HIGGS]);
+    }
+}
+
+impl HiggsServer {
+    fn speak(&self, text: &str, ref_wav: &str, ref_text: Option<&str>, opts: &str) -> Result<(Vec<f32>, i32), String> {
+        let options = match serde_json::from_str::<serde_json::Value>(opts) {
+            Ok(serde_json::Value::Object(m)) => m,
+            Ok(_) | Err(_) if opts.trim().is_empty() => serde_json::Map::new(),
+            other => return Err(format!("Higgs options are not a JSON object: {opts} ({other:?})")),
+        };
+        let req = acpp_server::SpeechRequest {
+            model: crate::acpp::HIGGS.to_string(),
+            input: text.to_string(),
+            voice_ref: Some(acpp_server::VoiceRef::Path(PathBuf::from(ref_wav))),
+            reference_text: ref_text.map(str::trim).filter(|t| !t.is_empty()).map(str::to_string),
+            options,
+            stall: HIGGS_STALL,
+        };
+        self.cancel.store(false, Ordering::SeqCst);
+        self.running.store(true, Ordering::SeqCst);
+        let r = self.server.speech(&req, &self.cancel);
+        self.running.store(false, Ordering::SeqCst);
+        match r {
+            Ok(sp) => Ok((sp.samples, sp.sample_rate as i32)),
+            Err(acpp_server::AcppError::Cancelled) => Err(crate::jobs::CANCELLED.to_string()),
+            Err(e @ acpp_server::AcppError::Stalled { .. }) => {
+                crate::acpp::stop();
+                Err(crate::acpp::localize(&e))
+            }
+            Err(e) => Err(crate::acpp::localize(&e)),
+        }
+    }
+
+    /// Ends the phrase being spoken: its connection closes at the next delta; a phrase that sends none within the
+    /// grace stops its server, which the next phrase starts again.
+    fn cancel(&self) {
+        self.cancel.store(true, Ordering::SeqCst);
+        let running = self.running.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(HIGGS_CANCEL_GRACE);
+            if running.load(Ordering::SeqCst) {
+                tracing::warn!("Higgs did not stop {} s after a cancel: its audiocpp_server stops", HIGGS_CANCEL_GRACE.as_secs());
+                crate::acpp::stop();
+            }
+        });
+    }
 }
 
 /// Drama 3 только на CUDA и карте 24 ГБ+; не та карта или нет файлов — ошибка с причиной, Higgs её не подменяет.
@@ -853,13 +909,28 @@ fn converted_after(converted: &Path, source: &Path) -> bool {
     matches!((modified(converted), modified(source)), (Some(c), Some(s)) if c >= s)
 }
 
-/// Параметры Qwen3-TTS из JSON попытки Higgs: seed его или свежий случайный, `max_new_tokens` Higgs (75 токенов/с с
-/// запасом 1.5) -> кадры Qwen (12.5/с с запасом 2), температура Higgs 0.1-0.35 -> 0.6-0.95 (по умолчанию 0.9).
+/// Higgs v3 in audio.cpp makes one AR token per 40 ms codec frame, and its delayed codebooks take a few more.
+const HIGGS_TOKENS_PER_SEC: f64 = 25.0;
+/// How much longer than its slot a phrase may run before its attempt is cut.
+const HIGGS_CAP_MARGIN: f64 = 2.0;
+
+/// The `max_tokens` of a Higgs attempt for a slot of `secs`; reaching it before the end is an error of the attempt,
+/// and the ladder goes on to the next one.
+fn higgs_token_cap(secs: f64) -> u32 {
+    (((secs * HIGGS_TOKENS_PER_SEC * HIGGS_CAP_MARGIN).ceil() as u32) + 32).clamp(64, 2048)
+}
+
+/// The seconds an attempt's `max_tokens` allows, for the engines with other frame rates.
+fn cap_seconds(opts: &serde_json::Value) -> f64 {
+    opts.get("max_tokens").and_then(|t| t.as_u64()).unwrap_or(2048) as f64 / (HIGGS_TOKENS_PER_SEC * HIGGS_CAP_MARGIN)
+}
+
+/// Параметры Qwen3-TTS из JSON попытки Higgs: seed его или свежий случайный, потолок `max_tokens` Higgs
+/// ([`higgs_token_cap`]) -> кадры Qwen (12.5/с с запасом 2), температура Higgs 0.1-0.35 -> 0.6-0.95 (по умолчанию 0.9).
 fn qwen_params(opts: &str) -> (u64, f32, i32) {
     let v: serde_json::Value = serde_json::from_str(opts).unwrap_or_default();
     let seed = v.get("seed").and_then(|s| s.as_u64()).unwrap_or_else(|| uuid::Uuid::new_v4().as_u64_pair().0);
-    let tokens = v.get("max_new_tokens").and_then(|t| t.as_u64()).unwrap_or(2048) as f64;
-    let max_new = ((tokens * 12.5 * 2.0 / (75.0 * 1.5)).ceil() as i32).clamp(48, 2048);
+    let max_new = ((cap_seconds(&v) * 12.5 * 2.0).ceil() as i32).clamp(48, 2048);
     let temperature = v.get("temperature").and_then(|t| t.as_f64()).map_or(0.9, |t| (0.6 + t).min(0.95)) as f32;
     (seed, temperature, max_new)
 }
@@ -908,7 +979,7 @@ fn load_tts(paths: &RenderPaths, lang: &str, progress: &Progress) -> Result<Arc<
 
 /// Локальный TTS дубляжа: на карте одна модель — Higgs Audio v3, Drama 3 или Qwen3-TTS.
 pub enum TtsEngine {
-    Higgs(AudiocppEngine),
+    Higgs(HiggsServer),
     Drama(drama::DramaEngine),
     Qwen(QwenVoices),
     Supertonic(SupertonicVoices),
@@ -927,7 +998,7 @@ impl TtsEngine {
         match self {
             TtsEngine::Qwen(voices) => voices.speak(text, ref_wav, ref_text, opts),
             TtsEngine::Supertonic(voices) => voices.speak(text, ref_wav, opts),
-            TtsEngine::Higgs(e) => e.voice_clone(&qwentts::stress_marks(text, false), ref_wav, ref_text, opts).map_err(|e| e.localize()),
+            TtsEngine::Higgs(e) => e.speak(&qwentts::stress_marks(text, false), ref_wav, ref_text, opts),
             TtsEngine::Drama(e) => {
                 let text = qwentts::stress_marks(text, false);
                 let text = text.as_str();
@@ -961,13 +1032,12 @@ fn regen_seed(s: &dub_core::Segment) -> u64 {
 }
 
 /// Параметры Drama 3 из JSON попытки Higgs: seed — его, а у попытки без seed свежий случайный (как сэмплинг Higgs:
-/// перегенерация фразы даёт новый дубль, а не тот же файл), `max_new_tokens` Higgs (75 токенов/с с запасом 1.5) ->
+/// перегенерация фразы даёт новый дубль, а не тот же файл), потолок `max_tokens` Higgs ([`higgs_token_cap`]) ->
 /// кадры Drama (21.5/с с запасом 2), температура Higgs 0.1-0.35 -> 0.8-1.0.
 fn drama_params(opts: &str) -> drama::Params {
     let v: serde_json::Value = serde_json::from_str(opts).unwrap_or_default();
     let seed = v.get("seed").and_then(|s| s.as_u64()).unwrap_or_else(|| uuid::Uuid::new_v4().as_u64_pair().0);
-    let tokens = v.get("max_new_tokens").and_then(|t| t.as_u64()).unwrap_or(2048) as f64;
-    let max_new = ((tokens * drama::FRAMES_PER_SECOND * 2.0 / (75.0 * 1.5)).ceil() as u32).clamp(64, 2048);
+    let max_new = ((cap_seconds(&v) * drama::FRAMES_PER_SECOND * 2.0).ceil() as u32).clamp(64, 2048);
     let temperature = v.get("temperature").and_then(|t| t.as_f64()).map_or(1.0, |t| (0.7 + t).min(1.0)) as f32;
     drama::Params { temperature, seed, max_new, ..Default::default() }
 }
@@ -978,10 +1048,10 @@ mod qwen_params_tests {
 
     #[test]
     fn the_attempt_ladder_reaches_qwen_on_its_own_scales() {
-        let (seed, temperature, max_new) = qwen_params(r#"{"temperature":0.30,"max_new_tokens":365,"seed":2002}"#);
+        let (seed, temperature, max_new) = qwen_params(r#"{"temperature":0.30,"max_tokens":182,"seed":2002}"#);
         assert_eq!(seed, 2002);
         assert!((temperature - 0.9).abs() < 1e-6);
-        assert_eq!(max_new, 82);
+        assert_eq!(max_new, 91);
         let (first, _, _) = qwen_params(r#"{"temperature":0.10}"#);
         let (second, _, _) = qwen_params(r#"{"temperature":0.10}"#);
         assert_ne!(first, second, "regenerating a line must give a new take");
@@ -995,11 +1065,11 @@ mod drama_params_tests {
 
     #[test]
     fn a_seedless_attempt_draws_a_new_seed_and_a_seeded_one_keeps_it() {
-        let first = r#"{"temperature":0.30,"max_new_tokens":365}"#;
+        let first = r#"{"temperature":0.30,"max_tokens":182}"#;
         assert_ne!(drama_params(first).seed, drama_params(first).seed, "regenerating a line must give a new take");
-        let seeded = r#"{"temperature":0.10,"max_new_tokens":365,"seed":2002}"#;
+        let seeded = r#"{"temperature":0.10,"max_tokens":182,"seed":2002}"#;
         assert_eq!(drama_params(seeded).seed, 2002);
-        assert_eq!(drama_params(seeded).max_new, 140);
+        assert_eq!(drama_params(seeded).max_new, 157);
         assert!((drama_params(seeded).temperature - 0.8).abs() < 1e-6);
         assert!((drama_params(first).temperature - 1.0).abs() < 1e-6);
     }
@@ -1513,20 +1583,20 @@ fn build_dub_pass(
                 .filter(|(_, s)| clone_slot_spks.contains(s.speaker.as_deref().unwrap_or("0")))
                 .cloned()
                 .collect();
-            let mut asr = crate::models::build_engine(&paths.asr);
+            let mut asr = crate::models::build_engine(&paths.asr)?;
             build_speaker_refs(&segs_clone, &ref_src, wd, ref_secs, qwen_refs, asr.as_mut(), progress,
             )?
         }
     } else {
         // Скоринг кандидатов + REF-QC (транскрипт каждого кандидата сверяется с текстом его окна,
         // брак -> следующий) — ref_text выставляется ВНУТРИ по фактически услышанному.
-        let mut asr = crate::models::build_engine(&paths.asr);
+        let mut asr = crate::models::build_engine(&paths.asr)?;
         build_speaker_refs(&segs, &ref_src, wd, ref_secs, qwen_refs, asr.as_mut(), progress)?
     };
     if use_pack {
-        // Реф-транскрипция выбранным движком (Parakeet/Whisper), а НЕ захардкоженным Parakeet — иначе у
-        // Whisper-only юзера (без Parakeet-модели) ref_text молча не считался бы. build_engine сам решает.
-        let mut asr = crate::models::build_engine(&paths.asr);
+        // Реф-транскрипция выбранным движком (Parakeet/CrisperWhisper), а не захардкоженным Parakeet: у юзера без
+        // Parakeet-модели ref_text молча не считался бы. build_engine сам решает.
+        let mut asr = crate::models::build_engine(&paths.asr)?;
         fill_ref_texts(asr.as_mut(), &pack_refs, &mut ref_texts);
     }
     let first_ref = pack_refs
@@ -2078,12 +2148,9 @@ fn build_dub_pass(
             let spk_key = s.speaker.clone().unwrap_or_else(|| "0".into());
             let alt = alt_refs.get(&spk_key);
             let tgt_chars = tgt.chars().filter(|c| c.is_alphanumeric()).count();
-            // КАП ТОКЕНОВ ПО ДЛИТЕЛЬНОСТИ (ENGINES_FINDINGS §1.1, issue #151): в движке НЕТ авто-капа —
-            // без него короткая фраза может уйти в 40с гула до max_new_tokens=2048. Кодек 25-75 ток/с
-            // (версии разнятся) — берём консервативные 75: cap = ceil(dur×75×1.5)+32, floor 64.
-            // Таргет-длительность = длительность оригинальной реплики (у дубля тот же слот).
+            // Потолок токенов по длительности слота (issue #151): без него короткая фраза может уйти в долгий гул.
             let expected_dur = (s.end - s.start).max(0.6);
-            let tok_cap: u32 = (((expected_dur * 75.0 * 1.5).ceil() as u32) + 32).clamp(64, 2048);
+            let tok_cap = higgs_token_cap(expected_dur);
             
             // Динамическая адаптация темпа (Speech Rate): если текст плотный (>14 знаков/сек), понижаем
             // температуру и зажимаем повторы, выговаривая текст собранно; если редкий — повышаем.
@@ -2094,7 +2161,6 @@ fn build_dub_pass(
                 1.0
             };
             let base_temp = if rate_ratio > 1.12 { 0.18 } else if rate_ratio < 0.88 { 0.32 } else { 0.30 };
-            let base_ras_rep = if rate_ratio > 1.12 { ",\"ras_win_max_num_repeat\":1" } else { "" };
 
             let mut attempt = 0usize;
             let mut retried = false;
@@ -2124,16 +2190,16 @@ fn build_dub_pass(
                 let seed = ((fi as u64) * 1000 + attempt as u64).wrapping_add(regen_seed(s));
                 let opts = match attempt {
                     0 | 3 => format!(
-                        "{{\"temperature\":{base_temp:.2},\"top_p\":0.95,\"top_k\":50,\"max_new_tokens\":{tok_cap},\"ras_win_len\":7{base_ras_rep},\"return_audio_in_tokens\":true}}"
+                        "{{\"temperature\":{base_temp:.2},\"top_p\":0.95,\"top_k\":50,\"max_tokens\":{tok_cap}}}"
                     ),
                     1 => format!(
-                        "{{\"temperature\":0.20,\"top_p\":0.95,\"top_k\":50,\"max_new_tokens\":{tok_cap},\"ras_win_len\":7,\"ras_win_max_num_repeat\":1,\"return_audio_in_tokens\":true,\"seed\":{seed}}}"
+                        "{{\"temperature\":0.20,\"top_p\":0.95,\"top_k\":50,\"max_tokens\":{tok_cap},\"seed\":{seed}}}"
                     ),
                     2 => format!(
-                        "{{\"temperature\":0.10,\"top_p\":0.90,\"top_k\":50,\"max_new_tokens\":{tok_cap},\"ras_win_len\":7,\"return_audio_in_tokens\":true,\"seed\":{seed}}}"
+                        "{{\"temperature\":0.10,\"top_p\":0.90,\"top_k\":50,\"max_tokens\":{tok_cap},\"seed\":{seed}}}"
                     ),
                     _ => format!(
-                        "{{\"temperature\":0.15,\"top_p\":0.90,\"top_k\":50,\"max_new_tokens\":{tok_cap},\"ras_win_len\":7,\"ras_win_max_num_repeat\":1,\"return_audio_in_tokens\":true,\"seed\":{seed}}}"
+                        "{{\"temperature\":0.15,\"top_p\":0.90,\"top_k\":50,\"max_tokens\":{tok_cap},\"seed\":{seed}}}"
                     ),
                 };
                 attempt += 1;
@@ -2206,7 +2272,7 @@ fn build_dub_pass(
                 }
             } };
             if !kept_original {
-                let wav = AudiocppEngine::encode_wav(&samples, sr, 1);
+                let wav = crate::wavio::encode_wav(&samples, sr, 1);
                 dub_core::atomic::write(&raw, &wav).map_err(|e| t!("render-write-segment", line = fi, error = e.to_string()))?;
             }
             // Много ретраев подряд/суммарно = систем. проблема (стенд/VRAM или реф-клипы) → стоп с ошибкой.
@@ -2268,14 +2334,14 @@ fn build_dub_pass(
                 Some(emo) => emo,
                 None => (ref_of(s), reftext_of(s)),
             };
-            let tok_cap: u32 = ((((s.end - s.start).max(0.6) * 75.0 * 1.5).ceil() as u32) + 32).clamp(64, 2048);
+            let tok_cap = higgs_token_cap((s.end - s.start).max(0.6));
             for take_i in 1..=2u64 {
                 crate::jobs::check_cancelled()?;
                 let take_path = wd.join(format!("seg_{sid}_take{take_i}.wav"));
                 let seed = ((fi as u64) * 10000 + take_i * 100 + 77).wrapping_add(regen_seed(s));
                 let temp = if take_i == 1 { 0.25 } else { 0.35 };
                 let opts = format!(
-                    "{{\"temperature\":{temp:.2},\"top_p\":0.95,\"top_k\":50,\"max_new_tokens\":{tok_cap},\"ras_win_len\":7,\"return_audio_in_tokens\":true,\"seed\":{seed}}}"
+                    "{{\"temperature\":{temp:.2},\"top_p\":0.95,\"top_k\":50,\"max_tokens\":{tok_cap},\"seed\":{seed}}}"
                 );
                 let rt_mt = ref_text_mt.as_deref();
                 let vc_to = Duration::from_secs((((s.end - s.start) * 8.0).ceil() as u64).max(45));
@@ -2284,7 +2350,7 @@ fn build_dub_pass(
                 ) {
                     Ok((samples, sr)) => {
                         if take_defect(&samples, sr, tgt, judge).is_none() {
-                            let wav = AudiocppEngine::encode_wav(&samples, sr, 1);
+                            let wav = crate::wavio::encode_wav(&samples, sr, 1);
                             dub_core::atomic::write(&take_path, &wav)?;
                             let td = media::duration(&take_path)?;
                             let meta = crate::takes::NewTake {
@@ -2457,7 +2523,7 @@ fn build_dub_pass(
         // Higgs и распознаватель не держатся в видеопамяти одновременно.
         drop(engine.take());
         let files: Vec<PathBuf> = qc_list.iter().map(|q| q.2.clone()).collect();
-        let heard = crate::models::build_engine(&paths.asr).transcribe_many(&files, &proj.tgt_lang);
+        let heard = crate::models::build_engine(&paths.asr)?.transcribe_many(&files, &proj.tgt_lang);
         // Сходство QC — в дубль истории, который проверялся.
         let qc_note = |fi: usize, n: Option<u32>, sim: f64| -> Result<(), String> {
             let Some(n) = n else { return Ok(()) };
@@ -2496,14 +2562,14 @@ fn build_dub_pass(
                 // до 3 свежих попыток (низкая temperature по ENGINES_FINDINGS §1.3 + кап токенов §1.1):
                 // альт-реф 0.3 → альт-реф 0.15+RAS1 → основной 0.10 с новым seed
                 let e_dur = (s.end - s.start).max(0.6);
-                let cap: u32 = (((e_dur * 75.0 * 1.5).ceil() as u32) + 32).clamp(64, 2048);
-                let base = format!("\"top_k\":50,\"max_new_tokens\":{cap},\"ras_win_len\":7,\"return_audio_in_tokens\":true");
+                let cap = higgs_token_cap(e_dur);
+                let base = format!("\"top_k\":50,\"max_tokens\":{cap}");
                 let mut fixed = false;
                 for (k, (rw, rt, opts)) in {
                     let mut plan: Vec<(&PathBuf, Option<&str>, String)> = Vec::new();
                     if let Some((ap, at_)) = alt {
                         plan.push((ap, at_.as_deref(), format!("{{\"temperature\":0.30,\"top_p\":0.95,{base}}}")));
-                        plan.push((ap, at_.as_deref(), format!("{{\"temperature\":0.15,\"top_p\":0.90,\"ras_win_max_num_repeat\":1,{base},\"seed\":{}}}", (*fi as u64) * 1000 + 77)));
+                        plan.push((ap, at_.as_deref(), format!("{{\"temperature\":0.15,\"top_p\":0.90,{base},\"seed\":{}}}", (*fi as u64) * 1000 + 77)));
                     }
                     plan.push((&main_rw, main_rt.as_deref(), format!("{{\"temperature\":0.10,\"top_p\":0.90,{base},\"seed\":{}}}", (*fi as u64) * 1000 + 88)));
                     plan
@@ -2520,7 +2586,7 @@ fn build_dub_pass(
                     if take_defect(&smp, r, tgtq, judge).is_some() {
                         continue;
                     }
-                    let wav = AudiocppEngine::encode_wav(&smp, r, 1);
+                    let wav = crate::wavio::encode_wav(&smp, r, 1);
                     if dub_core::atomic::write(raw, &wav).is_ok() {
                         // пере-fit в тот же слот и подмена в placed (позиция at не меняется, длит. обновляем).
                         // Кап = потолок дрейфа (2.0): основной проход мог дрейф-капнуть этот сегмент выше
@@ -2561,7 +2627,7 @@ fn build_dub_pass(
             // финальная сверка пересинтезированных — честный отчёт в журнал
             let files2: Vec<PathBuf> = bad_idx.iter().map(|&i| qc_list[i].2.clone()).collect();
             drop(engine.take());
-            let heard2 = crate::models::build_engine(&paths.asr).transcribe_many(&files2, &proj.tgt_lang);
+            let heard2 = crate::models::build_engine(&paths.asr)?.transcribe_many(&files2, &proj.tgt_lang);
             let mut still = 0usize;
             let mut unheard2: Vec<String> = Vec::new();
             for (j, &i) in bad_idx.iter().enumerate() {
@@ -4144,13 +4210,11 @@ mod tests {
             output: dir.join("out.mp4"),
             bsroformer_cli: PathBuf::new(),
             bsroformer_model: PathBuf::new(),
-            higgs_dll: PathBuf::new(),
+            repo_root: PathBuf::new(),
             higgs_model_root: PathBuf::new(),
             higgs_quant: String::new(),
             fonts_dir: PathBuf::new(),
             higgs_backend: "cpu".into(),
-            higgs_device: 0,
-            higgs_threads: 1,
             max_stretch: 1.0,
             voices_dir: PathBuf::new(),
             asr: crate::models::AsrChoice::unused(),
@@ -4418,7 +4482,7 @@ mod tests {
         );
         x.extend(vec![0.0f32; sr * 8 / 10]);
         let raw = wd.join("seg_s0.wav");
-        std::fs::write(&raw, AudiocppEngine::encode_wav(&x, sr as i32, 1)).unwrap();
+        std::fs::write(&raw, crate::wavio::encode_wav(&x, sr as i32, 1)).unwrap();
         let raw_bytes = std::fs::read(&raw).unwrap();
         let out = wd.join("seg_000_tight.wav");
         let t = tighten_clip(&raw, 10.0, &out).unwrap();
@@ -4432,7 +4496,7 @@ mod tests {
         assert_eq!((y.len(), ysr), (sr * 112 / 100, sr as u32));
 
         let full = wd.join("seg_s1.wav");
-        std::fs::write(&full, AudiocppEngine::encode_wav(&x[sr / 2..sr * 3 / 2], sr as i32, 1),
+        std::fs::write(&full, crate::wavio::encode_wav(&x[sr / 2..sr * 3 / 2], sr as i32, 1),
         ).unwrap();
         let t = tighten_clip(&full, 10.0, &wd.join("seg_001_tight.wav")).unwrap();
         assert_eq!(t.path, full, "снимать нечего — клип остаётся своим файлом");
@@ -4490,7 +4554,7 @@ mod tests {
             (0..sr * 18 / 10).map(|i| 0.5 * (2.0 * std::f32::consts::PI * 220.0 * i as f32 / sr as f32).sin()).collect();
         x.extend(vec![0.0f32; sr * 4 / 10]);
         let raw = wd.join("seg_s0.wav");
-        std::fs::write(&raw, AudiocppEngine::encode_wav(&x, sr as i32, 1)).unwrap();
+        std::fs::write(&raw, crate::wavio::encode_wav(&x, sr as i32, 1)).unwrap();
         let t = tighten_clip(&raw, 2.2, &wd.join("seg_000_tight.wav")).unwrap();
         assert!((t.before - 2.2).abs() < 1e-6 && (t.after - 1.86).abs() < 1e-6, "{} -> {}", t.before, t.after);
         assert_eq!(fit_factor(t.before, 2.2, 1.25, t.before), None, "с хвостом клип ложился без atempo");

@@ -761,7 +761,7 @@ fn align_cues(
     }
     emit(progress, "asr", &t!("analyze-align-recognizing"));
     std::env::set_var("DUB_ASR_BACKEND", crate::models::stage_backend(&paths.models_root, "asr_backend"));
-    let mut asr = crate::models::build_engine(&paths.asr);
+    let mut asr = crate::models::build_engine(&paths.asr)?;
     let words: Vec<crate::subalign::Heard> = asr
         .transcribe(asr_wav, &args.src_lang)
         .map_err(|e| t!("analyze-align-recognition-failed", error = e.localize()))?
@@ -1157,7 +1157,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         }
         // Backend локального ASR (Parakeet onnx CUDA-EP/CPU, Whisper cuda/cpu) — до создания движка/сессии.
         std::env::set_var("DUB_ASR_BACKEND", crate::models::stage_backend(&paths.models_root, "asr_backend"));
-        let mut asr = crate::models::build_engine(&paths.asr);
+        let mut asr = crate::models::build_engine(&paths.asr)?;
         let turns: &[dub_asr::Turn] = diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]);
         let nsp = diar.as_ref().map(|d| d.n_speakers).unwrap_or(1).max(1);
         emit(
@@ -1216,7 +1216,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     // «скрыть» или «только пометить». Импорт субтитров — текст пользователя, его не трогаем.
     if paths.import_subs.is_none() {
         let rules = match (&paths.asr, crate::models::openrouter_asr_on(&paths.models_root)) {
-            (crate::models::AsrChoice::Whisper { .. }, false) => dub_asr::HallucinationRules::Whisper,
+            (crate::models::AsrChoice::CrisperWhisper { .. }, false) => dub_asr::HallucinationRules::Whisper,
             _ => dub_asr::HallucinationRules::CaseAware,
         };
         let clean = (asr_wav != vocals16).then_some(asr_wav.as_path());

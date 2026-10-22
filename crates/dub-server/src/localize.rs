@@ -2,7 +2,6 @@
 //! code and its arguments and speak English in `Display` (for logs); here each becomes a message of the
 //! catalogues in the language the window shows.
 
-use audiocpp::EngineError;
 use dub_asr::{AsrError, SpeakerMatchError};
 use dub_captions::CaptionsError;
 use dub_core::glossary::GlossaryError;
@@ -119,18 +118,6 @@ impl Localize for FacesError {
             FacesError::CropSize { width, height } => t!("faces-crop-size", width = *width, height = *height),
             FacesError::SampleRate { expected, got } => t!("faces-sample-rate", expected = *expected, got = *got),
             FacesError::ClipTooShort => t!("faces-clip-too-short"),
-        }
-    }
-}
-
-impl Localize for EngineError {
-    fn localize(&self) -> String {
-        match self {
-            EngineError::LibraryLoad(error) => t!("tts-library-load", error = error.clone()),
-            EngineError::Cancelled => t!("tts-cancelled"),
-            EngineError::Generation(error) => t!("tts-generation", error = error.clone()),
-            EngineError::InvalidParam(error) => t!("tts-invalid-param", error = error.clone()),
-            EngineError::StreamingUnsupported => t!("tts-streaming-unsupported"),
         }
     }
 }

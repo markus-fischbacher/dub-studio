@@ -8,6 +8,7 @@
 
 #[macro_use]
 pub mod i18n;
+mod acpp;
 mod analyze;
 mod asr_filter;
 mod atomic;
@@ -192,8 +193,6 @@ pub struct AppState {
     pub bsroformer_cli: PathBuf,
     /// GGUF модель сепарации. Env DUB_STUDIO_BSROFORMER_MODEL, иначе <repo>/models/bsroformer/voc_fv6-Q8_0.gguf.
     pub bsroformer_model: PathBuf,
-    /// Higgs audiocpp_engine.dll (TTS). Env DUB_STUDIO_HIGGS_DLL, иначе <models>/higgs-engine/audiocpp_engine.dll.
-    pub higgs_dll: PathBuf,
     /// Каталог весов Higgs (q8_0). Env DUB_STUDIO_HIGGS_MODEL, иначе <models>/higgs-q8_0.
     pub higgs_model_root: PathBuf,
     /// Каталог bundled-шрифтов субтитров. Env DUB_STUDIO_FONTS_DIR, иначе <repo>/fonts.
@@ -374,6 +373,7 @@ impl AppState {
         let web_root = spa::find_web_root(&repo_root);
         let mroot = models_root(&repo_root);
         setup::remove_retired(&mroot);
+        setup::remove_retired_whisper(&repo_root);
         match credentials::migrate_legacy_selection(&mroot) {
             Ok(moved) if moved.openrouter_key || moved.proxy_password => {
                 tracing::info!("secrets moved from active.json to the secret store: {moved:?}")
@@ -393,9 +393,6 @@ impl AppState {
             .map(|d| PathBuf::from(d).join(dub_sep::ENGINE_CLI_FILE))
             .unwrap_or_else(|_| dub_sep::engine_dir(&repo_root).join(dub_sep::ENGINE_CLI_FILE));
         let bsroformer_model = dub_sep::model_path(&repo_root);
-        let higgs_dll = std::env::var("DUB_STUDIO_HIGGS_DLL")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| mroot.join("higgs-engine").join(if cfg!(windows) { "audiocpp_engine.dll" } else { "libaudiocpp_engine.so" }));
         let higgs_model_root = std::env::var("DUB_STUDIO_HIGGS_MODEL")
             .map(PathBuf::from)
             .unwrap_or_else(|_| mroot.join("higgs-q8_0"));
@@ -417,7 +414,6 @@ impl AppState {
             llama_bin,
             bsroformer_cli,
             bsroformer_model,
-            higgs_dll,
             higgs_model_root,
             fonts_dir,
             models_root: mroot,
@@ -703,12 +699,9 @@ async fn capabilities(State(st): State<AppState>) -> Json<Value> {
         "ffmpeg": ffmpeg,
         "languages": langs,
         "voice_modes": ["clone","autocast","auto","voice"],
-        // Выбор ASR: движок (parakeet|whisper), модель Whisper, квант Whisper (compute_type).
+        // Выбор ASR: движок (parakeet | whisper = CrisperWhisper).
         "selection": sel,
         "asr_engines": ["parakeet","whisper"],
-        "whisper_models": ["tiny","base","small","medium","large-v3","large-v3-turbo"],
-        // Кванты Whisper (compute_type): float16 / int8_float16 задействуют Tensor Cores на CUDA GPU.
-        "whisper_computes": ["int8","int8_float16","int8_float32"],
         // Видимые лимиты RAM (настройки, не авто-магия): против OOM на слабой памяти. "0" = авто (дефолт).
         "llama_ubatches": ["0","512","256","128"],      // prefill-батч Gemma (меньше = меньше RAM)
         "higgs_ref_secs_opts": ["12","8","6","4"],       // длина реф-клипа клона (сек; <12 спасает 32ГБ)
@@ -879,7 +872,7 @@ fn ensure_job_components(
     }
     // Сепарация или диаризация на GPU → полный CUDA-стек: диаризация грузит onnxruntime-GPU + cuDNN, ggml-движки
     // (сепарация/Higgs) — cuda-runtime (cudart/cublas/cuFFT). Без cuFFT CUDA-EP не поднимется. Распознавание на GPU
-    // (transcribe.cpp) берёт из него только cuda-runtime, Whisper — свои библиотеки (whisper-cuda ниже).
+    // (transcribe.cpp, audiocpp_server) берёт из него только cuda-runtime.
     let gpu = ["sep_backend", "diar_backend"]
         .iter()
         .any(|k| models::stage_backend(models_root, k) == "gpu");
@@ -893,23 +886,20 @@ fn ensure_job_components(
     } else if models::stage_backend(models_root, "asr_backend") == "gpu" && missing("cuda-runtime") {
         need.push("cuda-runtime".to_string());
     }
-    // Whisper на GPU: CTranslate2 требует cuBLAS12 + cuDNN8 РЯДОМ с whisper-faster.exe (наш ONNX-стек
-    // выше — CUDA 13, whisper'у не подходит). Без них whisper молча идёт на CPU. Тянем их только когда
-    // движок ASR = Whisper И стадия ASR на GPU.
+    // Диаризация на процессоре → onnxruntime (CPU): без него ort падает при первом касании, а на GPU его ставит блок выше.
+    if diarization && models::stage_backend(models_root, "diar_backend") == "cpu" && missing("onnxruntime") && missing("onnxruntime-gpu") {
+        need.push("onnxruntime".to_string());
+    }
     let asr_whisper = models::load_selection(models_root)
         .get("asr_engine")
         .and_then(|v| v.as_str())
         == Some("whisper");
-    if asr_whisper && models::stage_backend(models_root, "asr_backend") == "gpu" && missing("whisper-cuda") {
-        need.push("whisper-cuda".to_string());
-    }
-    // Whisper chosen → its program and the model the settings name, downloaded on first use as Parakeet's are
+    // CrisperWhisper chosen → its weights, and the language id (VoxLingua107) with the transcribe.cpp build it runs on
+    // for a source language left on «auto»; downloaded on first use as Parakeet's are.
     if asr_whisper && !models::openrouter_asr_on(models_root) {
-        let sel = models::load_selection(models_root);
-        let model = sel.get("whisper_model").and_then(|v| v.as_str()).filter(|m| !m.is_empty()).unwrap_or("large-v3-turbo");
-        for id in ["whisper-engine".to_string(), format!("whisper-{model}")] {
-            if missing(&id) {
-                need.push(id);
+        for id in ["crisperwhisper-turbo", "langid", models::tcpp_build(models_root).dir()] {
+            if missing(id) {
+                need.push(id.to_string());
             }
         }
     }
@@ -2392,13 +2382,11 @@ fn render_paths(st: &AppState, dir: &Path, input: PathBuf) -> render::RenderPath
         bsroformer_cli: dub_sep::engine_cli(&st.repo_root, models::stage_backend(&st.models_root, "sep_backend"),
         ),
         bsroformer_model: sep_model,
-        higgs_dll: st.higgs_dll.clone(),
+        repo_root: st.repo_root.clone(),
         higgs_model_root,
         higgs_quant,
         fonts_dir: st.fonts_dir.clone(),
         higgs_backend: "cuda".to_string(),
-        higgs_device: 0,
-        higgs_threads: st.opts.num_threads,
         max_stretch: st.opts.max_stretch as f64,
         voices_dir: st.voices_dir.clone(),
         asr: models::resolve_asr_choice(&st.repo_root, &st.models_root, &sel),
@@ -3349,7 +3337,7 @@ async fn align_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response>
         let asr = job_asr(&repo_root, &models_root);
         progress(json!({ "stage": "asr", "msg": t!("align-recognizing") }));
         std::env::set_var("DUB_ASR_BACKEND", &backend);
-        let words: Vec<subalign::Heard> = models::build_engine(&asr)
+        let words: Vec<subalign::Heard> = models::build_engine(&asr)?
             .transcribe(&wav, "auto")
             .map_err(|e| t!("align-recognition-failed", error = e.localize()))?
             .into_iter()

@@ -6,6 +6,11 @@ release notes on GitHub are taken from the release's section.
 
 ## Next
 
+### Changed
+
+- **Recognition of other languages is CrisperWhisper 2.0 turbo** instead of Faster-Whisper: 99 languages with word timestamps, run by the audio.cpp engine on the graphics card or the processor. When the source language is left on Auto, the VoxLingua107 language id hears it first; a language CrisperWhisper does not know is named in the error instead of being read as English. Settings → Models offers one model, without a choice of size and compute; the old Faster-Whisper program, its CUDA 11 libraries and its models are removed at start (a model another program shares stays with it). Its licence is nyra health Non-Commercial (LICENSE.md beside the weights).
+- **Higgs Audio v3 voices run in the audio.cpp engine** (a server process of the studio) instead of the old library: a stop ends the phrase being spoken at once, and the weights leave the card when voicing is done.
+
 ### Added
 
 - **The emotion of the original, per project** ([#44](https://github.com/timoncool/dub-studio/issues/44)): with the cloned voice, the editor's voice section chooses it for this project: in every line (each line is cloned from its own piece of the original, so shouting and whispering carry over, but the timbre can shift from line to line), one voice per speaker (every line from the speaker's one reference, a steady voice for a narrator or a lecture), or as Settings - Quality says. Agents set it with `voice_emotion_set`.
@@ -14,6 +19,8 @@ release notes on GitHub are taken from the release's section.
 
 - **Speech recognition no longer closes the studio on processors without AVX-512** ([#46](https://github.com/timoncool/dub-studio/issues/46)): the transcribe.cpp engine of 4.4.0 was built for the processor it was built on and used AVX-512 instructions, so on most Intel and older AMD processors the first recognition stopped the program without a word, on the card and on the processor alike. The engine is now built for every x86-64 processor with AVX2 (Intel since 2013, AMD since 2017), as fast as before, and on a processor without AVX2 the studio says so instead of closing.
 - **Whisper no longer writes over the silence at the end of a file** ([#45](https://github.com/timoncool/dub-studio/issues/45)): words lying wholly in a silence of the recording (at least 0.3 s, 30 dB under its speech) are dropped, and a word's end stops where the speech does, so "subscribe to the channel" over a file's quiet tail is gone and the last line ends with its voice; the check of the voiced lines by ear reads them the same way.
+- **Diarization on the processor downloads ONNX Runtime before the job** when it is missing, instead of stopping the analysis with "Failed to load ONNX Runtime dylib".
+- **Stopping a job or a link download no longer hangs** when Windows' process service (WMI) is stuck: the studio ends its processes itself instead of through taskkill.
 - **A damaged or not fully downloaded file is refused when it is opened**, with its name and what is wrong with it, instead of becoming a project on which every analysis and render stopped with "ffprobe exited with code 1 … Invalid data found when processing input". So is such a file downloaded by a link.
 - **Separation of recordings longer than about 6 h 45 min**: their 44.1 kHz audio is larger than a plain WAV can hold (4 GB) and is now written as RF64, and a WAV whose size is left unknown is read to its end, instead of stopping with "Ill-formed WAVE file: data chunk length is not a multiple of sample size". The separated vocals and music of a recording longer than about 3 h 20 min are written the same way; before, their size wrapped past 4 GB and the stems came out cut short.
 

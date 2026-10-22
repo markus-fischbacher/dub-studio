@@ -14,8 +14,8 @@ mod reconcile;
 mod resample;
 mod segment;
 mod speaker_global;
+pub mod acpp;
 pub mod tcpp;
-mod whisper;
 mod window;
 pub use hallucination::{hallucination_kind, is_hallucination, loop_kind, repeated_lines, HallucinationKind, HallucinationRules, LoopRules};
 pub use known_speakers::SpeakerMatchError;
@@ -24,7 +24,6 @@ pub use speaker_global::{
     cluster_embeddings, cosine, map_local_to_global, Embedding, LocalSpeaker, NullEmbedder,
     SpeakerEmbedder,
 };
-pub use whisper::WhisperAsr;
 pub use window::{
     detect_active_spans, merge_windows, plan_windows, speech_envelope, Window, WindowConfig,
 };
@@ -189,15 +188,14 @@ pub struct SpeakerSegment {
     pub speaker: i32,
 }
 
-/// Единый интерфейс ASR-движка: транскрипция whole-clip и per-speaker (реплики). Реализуют Parakeet
-/// (`Asr`) и Whisper (`WhisperAsr`) — analyze выбирает движок по настройке (models/active.json), не зная
-/// деталей. Методы берут `&Path` (объект-трейт: без дженериков).
+/// Единый интерфейс ASR-движка: транскрипция whole-clip и per-speaker (реплики). Реализуют Parakeet на transcribe.cpp
+/// (`tcpp::TcppEngine`) и CrisperWhisper в audiocpp_server (`acpp::AcppAsr`) — analyze выбирает движок по настройке
+/// (models/active.json), не зная деталей. Методы берут `&Path` (объект-трейт: без дженериков).
 pub trait AsrEngine {
     fn transcribe(&mut self, wav: &Path, lang: &str) -> Result<Vec<Segment>, AsrError>;
     fn transcribe_turns(&mut self, wav: &Path, turns: &[Turn], lang: &str) -> Result<Vec<SpeakerSegment>, AsrError>;
     /// Пакетная транскрипция МНОГИХ коротких файлов → полный текст каждого; Err — файл не распознан (с
-    /// причиной). Дефолт — цикл transcribe (Parakeet in-process и так быстр); Whisper переопределяет ОДНИМ
-    /// сабпроцессом на весь список (старт процесса дорогой, 333 файла по-одному — минуты впустую).
+    /// причиной). Дефолт — цикл transcribe; transcribe.cpp переопределяет пакетным прогоном.
     /// Используется QC-верификацией синтеза в рендере (сверка сказанного с ожидаемым переводом).
     fn transcribe_many(&mut self, files: &[std::path::PathBuf], lang: &str) -> Vec<Result<String, AsrError>> {
         files

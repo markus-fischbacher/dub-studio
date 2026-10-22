@@ -345,7 +345,7 @@ mod tests {
         let d = Downloads::open(&root);
         assert_eq!(d.active().unwrap().status, DownloadStatus::Interrupted);
         assert!(!d.pause(), "пауза без идущей закачки ничего не делает");
-        d.forget_covering(&["whisper-tiny".into()]);
+        d.forget_covering(&["langid".into()]);
         assert!(d.active().is_some(), "чужие компоненты не забываются");
         d.forget_covering(&["gemma-q8_0".into()]);
         assert!(d.active().is_none());

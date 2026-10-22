@@ -171,7 +171,7 @@ export type Capabilities = {
   languages: string[]; voice_modes: string[]; models?: ModelStack;
   // Выбор ASR-движка (active.json): движок parakeet|whisper + модель/квант Whisper.
   selection?: Selection;
-  asr_engines?: string[]; whisper_models?: string[]; whisper_computes?: string[];
+  asr_engines?: string[];
   // Видимые лимиты RAM (настройки): prefill-батч Gemma + длина реф-клипа клона.
   llama_ubatches?: string[]; higgs_ref_secs_opts?: string[];
 };

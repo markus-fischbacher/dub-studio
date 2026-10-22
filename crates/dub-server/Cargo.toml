@@ -16,7 +16,7 @@ dub-captions = { path = "../dub-captions" }
 dub-ocr = { path = "../dub-ocr" }
 dub-faces = { path = "../dub-faces" }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-audiocpp = { path = "../audiocpp" }
+acpp-server = { path = "../acpp-server" }
 drama = { path = "../drama" }
 qwentts = { path = "../qwentts" }
 hound = "3"

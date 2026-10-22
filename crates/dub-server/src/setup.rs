@@ -187,12 +187,6 @@ mod platform {
     // onnxruntime_providers_cuda.dll (сборка cuda13) грузит именно cufft64_12.dll — без него CUDA-EP не
     // грузится («CUDA not enabled»). cuFFT сохраняет soname 12 даже в CUDA 13. Извлекается как *.dll плоско.
     const REDIST_CUFFT: &str = "https://developer.download.nvidia.com/compute/cuda/redist/libcufft/windows-x86_64/libcufft-windows-x86_64-12.4.0.43-archive.zip";
-    // CUDA-либы для whisper-faster r192.3 (CTranslate2, собран под CUDA 11!): нужны РЯДОМ с exe
-    // (cublas64_11 + cudnn64_8), иначе GPU-режим Whisper падает «cublas64_11.dll not found» -> откат на CPU.
-    // ВАЖНО: не-XXL сборка = CUDA 11 (cublas64_11), XXL = CUDA 12 (cublas64_12) — РАЗНЫЕ. Версии те, что
-    // валидировал Purfview (cuBLAS 11.11.3.6 + cuDNN 8.9.7.29), но архивы у NVIDIA (Libs тянет библиотеки плоско).
-    const REDIST_WHISPER_CUBLAS: &str = "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip";
-    const REDIST_WHISPER_CUDNN: &str = "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip";
     // GitHub: yt-dlp 2026.08.19 (yt-dlp/yt-dlp, SHA-256 из SHA2-256SUMS релиза) — загрузка видео по ссылке. Это опора:
     // более свежие версии ставит рядом ytdlp::update, при их провале работает эта.
     const GH_YTDLP: &str = "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.exe";
@@ -237,26 +231,6 @@ mod platform {
             FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.1.0/ggml-cuda.dll", dest_rel: "models/qwen3-tts/ggml-cuda.dll", size: 140_809_728, sha256: "30fe1b38ca87499506313841fda1bf064b09422c3d9bc1506b94ec0063d9d1ce", extract: Extract::None },
         ],
         markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }, Marker { rel: "models/qwen3-tts/qwen.dll", expect: 425_984 }, Marker { rel: "models/qwen3-tts/ggml-cuda.dll", expect: 140_809_728 }],
-    };
-
-    pub const WHISPER_ENGINE: Parts = Parts {
-        size: 87_654_143,
-        files: &[
-            FileSpec { url: "https://github.com/Purfview/whisper-standalone-win/releases/download/faster-whisper/Whisper-Faster_r192.3_windows.zip", dest_rel: "tools/whisper/_whisper.zip", size: 87_654_143, sha256: "8150ad257fd8e46d817bb7e667260c2ce4c493d9e58973862e6409c592b44ba5", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/whisper/whisper-faster.exe", expect: 0 }],
-    };
-
-    pub const WHISPER_CUDA: Parts = Parts {
-        size: 1_125_090_089,
-        files: &[
-            FileSpec { url: REDIST_WHISPER_CUBLAS, dest_rel: "tools/whisper/_wcublas.zip", size: 420_850_025, sha256: "67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9", extract: Extract::Libs },
-            FileSpec { url: REDIST_WHISPER_CUDNN, dest_rel: "tools/whisper/_wcudnn.zip", size: 704_240_064, sha256: "5e45478efe71a96329e6c0d2a3a2f79c747c15b2a51fead4b84c89b02cbf1671", extract: Extract::Libs },
-        ],
-        markers: &[
-            Marker { rel: "tools/whisper/cublas64_11.dll", expect: 0 },
-            Marker { rel: "tools/whisper/cudnn64_8.dll", expect: 0 },
-        ],
     };
 
     pub const BSROFORMER: Parts = Parts {
@@ -381,28 +355,6 @@ mod platform {
 
     // Сборки Qwen3-TTS для Linux пока нет: компонент ставит только кодек, движок остаётся недоступным с причиной.
     pub const QWEN_ENGINE: Parts = Parts { size: super::QWEN_CODEC.size, files: &[super::QWEN_CODEC], markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }] };
-
-    // Purfview faster-whisper r189.1 для Linux (последняя Linux-сборка не-XXL, CTranslate2 под CUDA 11).
-    pub const WHISPER_ENGINE: Parts = Parts {
-        size: 106_093_648,
-        files: &[
-            FileSpec { url: "https://github.com/Purfview/whisper-standalone-win/releases/download/faster-whisper/Whisper-Faster_r189.1_linux.zip", dest_rel: "tools/whisper/_whisper.zip", size: 106_093_648, sha256: "f32f5e7abbb53300e569ca5ab3e9dd286b63b5e212209c12d47bdd9c72f923dd", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/whisper/whisper-faster", expect: 0 }],
-    };
-
-    // cuBLAS 11.11.3.6 и cuDNN 8.9.7.29 (CUDA 11) — те же версии, что на Windows, из redist NVIDIA.
-    pub const WHISPER_CUDA: Parts = Parts {
-        size: 1_361_648_788,
-        files: &[
-            FileSpec { url: "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/linux-x86_64/libcublas-linux-x86_64-11.11.3.6-archive.tar.xz", dest_rel: "tools/whisper/_wcublas.tar.xz", size: 500_681_532, sha256: "045e6455c9f8789b1c7ced19957c7904d23c221f4d1d75bb574a2c856aebae98", extract: Extract::Libs },
-            FileSpec { url: "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-8.9.7.29_cuda11-archive.tar.xz", dest_rel: "tools/whisper/_wcudnn.tar.xz", size: 860_967_256, sha256: "a3e2509028cecda0117ce5a0f42106346e82e86d390f4bb9475afc976c77402e", extract: Extract::Libs },
-        ],
-        markers: &[
-            Marker { rel: "tools/whisper/libcublas.so.11", expect: 0 },
-            Marker { rel: "tools/whisper/libcudnn.so.8", expect: 0 },
-        ],
-    };
 
     // BSRoformer.cpp v0.1.0 linux-cuda-13.1.0: RUNPATH указывает на каталог CI, свои libggml берёт через
     // LD_LIBRARY_PATH запуска (dub-sep).
@@ -903,130 +855,43 @@ pub fn manifest() -> Vec<Component> {
             markers: &[Marker { rel: "models/asr-gguf-parakeet-ultra/parakeet-ultra-Q8_0.gguf", expect: 740_363_168 }],
             external_url: None,
         },
-        // ── АЛЬТЕРНАТИВНЫЙ ASR-ДВИЖОК: Whisper (Purfview standalone faster-whisper) ──────────
-        // Бинарь-onefile (CTranslate2 CPU из коробки; GPU опц. с CUDA11-либами). Выбор в настройках:
-        // движок Parakeet/Whisper + РАЗНЫЕ модели (tiny…large-v3-turbo) + РАЗНЫЕ кванты (compute_type).
+        // ── Whisper: CrisperWhisper 2.0 turbo (nyralabs, лицензия nyra health Non-Commercial, LICENSE.md рядом) ──
+        // Репозиторий Hugging Face как есть, ревизия закреплена: audio.cpp читает папку. Идёт в audiocpp_server студии.
         Component {
-            id: "whisper-engine",
-            name: t!("setup-comp-whisper-engine-name"),
-            purpose: t!("setup-comp-whisper-engine-purpose"),
+            id: "crisperwhisper-turbo",
+            name: "CrisperWhisper 2.0 turbo".into(),
+            purpose: t!("setup-comp-crisperwhisper-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
-            size: platform::WHISPER_ENGINE.size,
-            files: platform::WHISPER_ENGINE.files,
-            markers: platform::WHISPER_ENGINE.markers,
-            external_url: None,
-        },
-        // CUDA-либы для GPU-режима Whisper (cuBLAS 12 + cuDNN 8) РЯДОМ с whisper-faster.exe. Без них
-        // whisper-faster (CTranslate2) не видит CUDA и падает на CPU — «GPU выбран, а работает на CPU».
-        // Качается по запросу, когда стартует Whisper-джоба на GPU (см. ensure_job_components).
-        Component {
-            id: "whisper-cuda",
-            name: t!("setup-comp-whisper-cuda-name"),
-            purpose: t!("setup-comp-whisper-cuda-purpose"),
-            requirement: Requirement::Optional,
-            delivery: Delivery::Download,
-            size: platform::WHISPER_CUDA.size,
-            files: platform::WHISPER_CUDA.files,
-            markers: platform::WHISPER_CUDA.markers,
-            external_url: None,
-        },
-        Component {
-            id: "whisper-tiny",
-            name: t!("setup-comp-whisper-tiny-name"),
-            purpose: t!("setup-comp-whisper-tiny-purpose"),
-            requirement: Requirement::Optional,
-            delivery: Delivery::Download,
-            size: 78_203_619,
+            size: 1_623_586_704,
             files: &[
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/model.bin", dest_rel: "models/whisper/faster-whisper-tiny/model.bin", size: 75_538_270, sha256: "dcb76c6586fc06cbdac6dd21f14cfd129cc4cdd9dce19bf4ffa62e59cbe6e6d1", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/config.json", dest_rel: "models/whisper/faster-whisper-tiny/config.json", size: 2_249, sha256: "a73a28cdfe1c43ccc7202fa333d1f89c202477271407ae9a7f19afa52039cac8", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/tokenizer.json", dest_rel: "models/whisper/faster-whisper-tiny/tokenizer.json", size: 2_203_239, sha256: "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/vocabulary.txt", dest_rel: "models/whisper/faster-whisper-tiny/vocabulary.txt", size: 459_861, sha256: "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/LICENSE.md", dest_rel: "models/crisperwhisper2-turbo/LICENSE.md", size: 17_784, sha256: "42f43bf4dc72ef422f91f6ca143f4514e21a68b353940d99091c1addcd0aee79", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/README.md", dest_rel: "models/crisperwhisper2-turbo/README.md", size: 10_974, sha256: "ddc82a301a1b59035eefcc1a8b2ec90d56257104df7365b00493c58135a6b029", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/added_tokens.json", dest_rel: "models/crisperwhisper2-turbo/added_tokens.json", size: 35_319, sha256: "228ddf33a2c2b94033dc0fad8e7847b554b1c9f7d2054f5455ffd562b6a30dc7", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/config.json", dest_rel: "models/crisperwhisper2-turbo/config.json", size: 1_211, sha256: "9d823d0eacddfc5ee920fac73897abfd29fbecac7d9e49b5d8e7f0bd63a56144", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/generation_config.json", dest_rel: "models/crisperwhisper2-turbo/generation_config.json", size: 3_880, sha256: "e20fb70a44ce2b3cb3b2bbbea852e064638563b072719640a286d2a6865066e1", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/merges.txt", dest_rel: "models/crisperwhisper2-turbo/merges.txt", size: 493_869, sha256: "2df2990a395e35e8dfbc7511e08c12d56018d8d04691e0133e5d63b21e154dc6", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/model.safetensors", dest_rel: "models/crisperwhisper2-turbo/model.safetensors", size: 1_617_907_538, sha256: "0121a185b87ada7497f22dfbcd6c86b5f599b69dfcc8676e37f36447caf0b630", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/normalizer.json", dest_rel: "models/crisperwhisper2-turbo/normalizer.json", size: 52_666, sha256: "bf1c507dc8724ca9cf9903640dacfb69dae2f00edee4f21ceba106a7392f26dd", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/preprocessor_config.json", dest_rel: "models/crisperwhisper2-turbo/preprocessor_config.json", size: 357, sha256: "654cf18d3e163b948ceaf9766da56ce0b52de265d58673cf61c9376f126bd499", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/special_tokens_map.json", dest_rel: "models/crisperwhisper2-turbo/special_tokens_map.json", size: 2_186, sha256: "baea4ea09372eb4fca86b4e4346139fd73cb807d5087e9de0948e971739c3e74", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/tokenizer.json", dest_rel: "models/crisperwhisper2-turbo/tokenizer.json", size: 3_937_105, sha256: "00e6dce8d06acafefaea8d5d1e57e89c69b3237d08ecbe2bf6eb7124e248bcde", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/tokenizer_config.json", dest_rel: "models/crisperwhisper2-turbo/tokenizer_config.json", size: 288_287, sha256: "3089ab61ce4745667a41e91620081cd3e7d61a9ae1f79fdf91b1bc8983916f4e", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/vocab.json", dest_rel: "models/crisperwhisper2-turbo/vocab.json", size: 835_528, sha256: "6788c80b082e9b0d1393147d3a3e62ba19285ac0c82ace8e5ef00f37ead58971", extract: Extract::None },
             ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-tiny/model.bin", expect: 75_538_270 }, Marker { rel: "models/whisper/faster-whisper-tiny/tokenizer.json", expect: 2_203_239 }],
+            markers: &[Marker { rel: "models/crisperwhisper2-turbo/model.safetensors", expect: 1_617_907_538 }],
             external_url: None,
         },
+        // Определение языка речи (VoxLingua107, transcribe.cpp): язык оригинала «авто» для CrisperWhisper.
         Component {
-            id: "whisper-base",
-            name: t!("setup-comp-whisper-base-name"),
-            purpose: t!("setup-comp-whisper-base-purpose"),
+            id: "langid",
+            name: "VoxLingua107 ECAPA (Q8_0, transcribe.cpp)".into(),
+            purpose: t!("setup-comp-langid-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
-            size: 147_882_941,
-            files: &[
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/model.bin", dest_rel: "models/whisper/faster-whisper-base/model.bin", size: 145_217_532, sha256: "d01c3014881c9c6f3133c182f3d2887eb6ca1c789a7538c5c007196857a0a6a9", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/config.json", dest_rel: "models/whisper/faster-whisper-base/config.json", size: 2_309, sha256: "56a6d8110d311f19c8f0471e562832c7527f146b567275bfca59fcf7c184da9a", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/tokenizer.json", dest_rel: "models/whisper/faster-whisper-base/tokenizer.json", size: 2_203_239, sha256: "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/vocabulary.txt", dest_rel: "models/whisper/faster-whisper-base/vocabulary.txt", size: 459_861, sha256: "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913", extract: Extract::None },
-            ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-base/model.bin", expect: 145_217_532 }, Marker { rel: "models/whisper/faster-whisper-base/tokenizer.json", expect: 2_203_239 }],
-            external_url: None,
-        },
-        Component {
-            id: "whisper-small",
-            name: t!("setup-comp-whisper-small-name"),
-            purpose: t!("setup-comp-whisper-small-purpose"),
-            requirement: Requirement::Optional,
-            delivery: Delivery::Download,
-            size: 486_212_372,
-            files: &[
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/model.bin", dest_rel: "models/whisper/faster-whisper-small/model.bin", size: 483_546_902, sha256: "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/config.json", dest_rel: "models/whisper/faster-whisper-small/config.json", size: 2_370, sha256: "b55496ac7940a7ae47d2c01eab40edfd8701feec1229d9cce3b40014383fb828", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/tokenizer.json", dest_rel: "models/whisper/faster-whisper-small/tokenizer.json", size: 2_203_239, sha256: "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/vocabulary.txt", dest_rel: "models/whisper/faster-whisper-small/vocabulary.txt", size: 459_861, sha256: "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913", extract: Extract::None },
-            ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-small/model.bin", expect: 483_546_902 }, Marker { rel: "models/whisper/faster-whisper-small/tokenizer.json", expect: 2_203_239 }],
-            external_url: None,
-        },
-        Component {
-            id: "whisper-medium",
-            name: t!("setup-comp-whisper-medium-name"),
-            purpose: t!("setup-comp-whisper-medium-purpose"),
-            requirement: Requirement::Optional,
-            delivery: Delivery::Download,
-            size: 1_530_571_735,
-            files: &[
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/model.bin", dest_rel: "models/whisper/faster-whisper-medium/model.bin", size: 1_527_906_378, sha256: "9b45e1009dcc4ab601eff815b61d80e60ce3fd8c74c1a14f4a282258286b51ae", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/config.json", dest_rel: "models/whisper/faster-whisper-medium/config.json", size: 2_257, sha256: "3622a2ddc41ec0e0fd4e68c13c6830f03b90c38d89aaad184de02c8c642cf807", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/tokenizer.json", dest_rel: "models/whisper/faster-whisper-medium/tokenizer.json", size: 2_203_239, sha256: "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/vocabulary.txt", dest_rel: "models/whisper/faster-whisper-medium/vocabulary.txt", size: 459_861, sha256: "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913", extract: Extract::None },
-            ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-medium/model.bin", expect: 1_527_906_378 }, Marker { rel: "models/whisper/faster-whisper-medium/tokenizer.json", expect: 2_203_239 }],
-            external_url: None,
-        },
-        Component {
-            id: "whisper-large-v3",
-            name: t!("setup-comp-whisper-large-v3-name"),
-            purpose: t!("setup-comp-whisper-large-v3-purpose"),
-            requirement: Requirement::Optional,
-            delivery: Delivery::Download,
-            size: 3_090_835_702,
-            files: &[
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/model.bin", dest_rel: "models/whisper/faster-whisper-large-v3/model.bin", size: 3_087_284_237, sha256: "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/config.json", dest_rel: "models/whisper/faster-whisper-large-v3/config.json", size: 2_394, sha256: "a9306624f5ec14270a014b647e5c316b6e03a662c369758d1b90697a7b0655b9", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/preprocessor_config.json", dest_rel: "models/whisper/faster-whisper-large-v3/preprocessor_config.json", size: 340, sha256: "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/tokenizer.json", dest_rel: "models/whisper/faster-whisper-large-v3/tokenizer.json", size: 2_480_617, sha256: "6d8cbd7cd0d8d5815e478dac67b85a26bbe77c1f5e0c6d76d1ce2abc0e5f21ca", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/vocabulary.json", dest_rel: "models/whisper/faster-whisper-large-v3/vocabulary.json", size: 1_068_114, sha256: "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1", extract: Extract::None },
-            ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-large-v3/model.bin", expect: 3_087_284_237 }, Marker { rel: "models/whisper/faster-whisper-large-v3/tokenizer.json", expect: 2_480_617 }],
-            external_url: None,
-        },
-        Component {
-            id: "whisper-large-v3-turbo",
-            name: t!("setup-comp-whisper-large-v3-turbo-name"),
-            purpose: t!("setup-comp-whisper-large-v3-turbo-purpose"),
-            requirement: Requirement::Optional,
-            delivery: Delivery::Download,
-            size: 1_621_665_983,
-            files: &[
-                FileSpec { url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/model.bin", dest_rel: "models/whisper/faster-whisper-large-v3-turbo/model.bin", size: 1_617_884_929, sha256: "e76620f83d5f5b69efd3d87e3dc180c1bd21df9fbebacfd4335e5e1efcc018da", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/config.json", dest_rel: "models/whisper/faster-whisper-large-v3-turbo/config.json", size: 2_263, sha256: "b0253ea6c0d3bea6b1e19e91a02acfd3b53f4467362efcb5a3e6b16c9b3a9b7e", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/preprocessor_config.json", dest_rel: "models/whisper/faster-whisper-large-v3-turbo/preprocessor_config.json", size: 340, sha256: "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/tokenizer.json", dest_rel: "models/whisper/faster-whisper-large-v3-turbo/tokenizer.json", size: 2_710_337, sha256: "297b13372ac43916285644fb9687add3cc62ee2a1adb60da3dc25cc94c1871fd", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/vocabulary.json", dest_rel: "models/whisper/faster-whisper-large-v3-turbo/vocabulary.json", size: 1_068_114, sha256: "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1", extract: Extract::None },
-            ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-large-v3-turbo/model.bin", expect: 1_617_884_929 }, Marker { rel: "models/whisper/faster-whisper-large-v3-turbo/tokenizer.json", expect: 2_710_337 }],
+            size: 26_693_632,
+            files: &[FileSpec { url: "https://huggingface.co/handy-computer/lang-id-voxlingua107-ecapa-gguf/resolve/e59f0f3847e77723b7d58447ef9456fa0c7e9436/lang-id-voxlingua107-ecapa-Q8_0.gguf", dest_rel: "models/langid-voxlingua107/lang-id-voxlingua107-ecapa-Q8_0.gguf", size: 26_693_632, sha256: "063e6cb0af3d53085fc7d68356dfde5ecee2ffa7bc79855f7e4ff930081bfe3a", extract: Extract::None }],
+            markers: &[Marker { rel: "models/langid-voxlingua107/lang-id-voxlingua107-ecapa-Q8_0.gguf", expect: 26_693_632 }],
             external_url: None,
         },
         // Диаризация. Маркер — только файл Nemotron: у старых установок лежит лишь Sortformer v2
@@ -1941,7 +1806,7 @@ pub fn setup_status(repo_root: &Path) -> SetupStatus {
         }
         let is_gemma = c.id.starts_with("gemma") || c.id == "llama";
         let is_higgs = c.id.starts_with("higgs");
-        let is_asr = c.id.starts_with("parakeet") || c.id.starts_with("whisper") || c.id.starts_with("transcribe-engine");
+        let is_asr = c.id.starts_with("parakeet") || c.id.starts_with("crisperwhisper") || c.id == "langid" || c.id.starts_with("transcribe-engine");
         if (cloud_llm && is_gemma) || (cloud_tts && is_higgs) || (cloud_asr && is_asr) {
             c.requirement = Requirement::Optional;
         }
@@ -3213,9 +3078,11 @@ fn write_entry(entry: &mut impl Read, out: &Path, mode: Option<u32>) -> Result<(
     Ok(())
 }
 
+
 // ═══════════════════════════════════════════════════════════════════════════
-/// Models of a former version that nothing reads any more (Dub Studio 4.3 and earlier: Parakeet on ONNX Runtime), under the models folder.
-const RETIRED: &[&str] = &["tdt", "tdt-fp32", "tdt-ultra", "tdt-ultra-int8"];
+/// Models of a former version that nothing reads any more, under the models folder: Parakeet on ONNX Runtime (Dub
+/// Studio 4.3 and earlier) and the Faster-Whisper models (4.4 and earlier).
+const RETIRED: &[&str] = &["tdt", "tdt-fp32", "tdt-ultra", "tdt-ultra-int8", "whisper"];
 
 /// Removes the retired models, so they do not keep gigabytes that no row of the setup screen shows. A link (another
 /// program's folder linked in) loses only the link; a hard-linked file stays with the program that shares it.
@@ -3233,6 +3100,51 @@ pub fn remove_retired(models_root: &Path) {
         match removed {
             Ok(()) => tracing::info!("removed the retired models {}", path.display()),
             Err(e) => tracing::error!("[ERROR] could not remove the retired models {}: {e}", path.display()),
+        }
+    }
+}
+
+/// Install records of the Whisper-Faster r192.3/r189.1 program and its CUDA 11 cuBLAS and cuDNN 8 (Dub Studio 4.4 and
+/// earlier), which lay flat in tools/whisper; Whisper is CrisperWhisper in audiocpp_server now.
+const RETIRED_WHISPER_RECORDS: &[&str] = &[
+    "tools/whisper/_whisper.zip.json",
+    "tools/whisper/_wcublas.zip.json",
+    "tools/whisper/_wcudnn.zip.json",
+    "tools/whisper/_wcublas.tar.xz.json",
+    "tools/whisper/_wcudnn.tar.xz.json",
+];
+
+/// Removes the former Whisper program and its CUDA 11 libraries: what their install records list, and an older
+/// install without records (the program and the cuBLAS and cuDNN libraries lying directly in tools/whisper).
+pub fn remove_retired_whisper(repo_root: &Path) {
+    let dir = repo_root.join("tools").join("whisper");
+    let mut doomed: Vec<PathBuf> = Vec::new();
+    for rel in RETIRED_WHISPER_RECORDS {
+        let record = repo_root.join(rel);
+        let Ok(text) = std::fs::read_to_string(&record) else { continue };
+        match serde_json::from_str::<ArchiveRecord>(&text) {
+            Ok(r) => doomed.extend(r.files.iter().filter(|x| x.path.starts_with("tools/whisper/")).map(|x| repo_root.join(&x.path))),
+            Err(e) => tracing::error!("[ERROR] the install record {} is unreadable: {e}", record.display()),
+        }
+        doomed.push(record);
+    }
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().to_ascii_lowercase();
+            let old_program = name == "whisper-faster.exe" || name == "whisper-faster";
+            let old_cuda = ["cublas", "cudnn", "libcublas", "libcudnn"].iter().any(|p| name.starts_with(p));
+            if (old_program || old_cuda) && e.path().is_file() {
+                doomed.push(e.path());
+            }
+        }
+    }
+    doomed.sort();
+    doomed.dedup();
+    for path in doomed {
+        match std::fs::remove_file(&path) {
+            Ok(()) => tracing::info!("removed the retired Whisper file {}", path.display()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => tracing::error!("[ERROR] could not remove the retired Whisper file {}: {e}", path.display()),
         }
     }
 }
@@ -3677,22 +3589,22 @@ mod tests {
     fn removal_frees_the_files_and_the_partial_download() {
         let root = temp_root("remove");
         let all = manifest();
-        let tiny = all.iter().find(|c| c.id == "whisper-tiny").unwrap();
+        let tiny = all.iter().find(|c| c.id == "langid").unwrap();
         for f in tiny.files {
             sized(&root.join(f.dest_rel), f.size);
         }
-        let leftover = part_path(&root, &all.iter().find(|c| c.id == "whisper-base").unwrap().files[0],
+        let leftover = part_path(&root, &all.iter().find(|c| c.id == "roformer-q4").unwrap().files[0],
         );
         sized(&leftover, 1000);
         assert!(component_status(&root, tiny).installed);
 
-        let r = remove_components(&root, &["whisper-tiny".to_string(), "whisper-base".to_string()],
+        let r = remove_components(&root, &["langid".to_string(), "roformer-q4".to_string()],
         ).unwrap();
-        assert_eq!(r.removed, vec!["whisper-tiny".to_string(), "whisper-base".to_string()]);
+        assert_eq!(r.removed, vec!["langid".to_string(), "roformer-q4".to_string()]);
         assert_eq!(r.freed_bytes, tiny.size + 1000);
         assert!(r.errors.is_empty(), "{:?}", r.errors);
         assert!(!component_status(&root, tiny).installed);
-        assert!(!root.join("models/whisper/faster-whisper-tiny").exists(), "пустой каталог модели снят");
+        assert!(!root.join("models/langid-voxlingua107").exists(), "пустой каталог модели снят");
         assert!(root.join("models").is_dir(), "models/ остаётся");
         std::fs::remove_dir_all(&root).ok();
     }
@@ -3703,8 +3615,8 @@ mod tests {
         assert_eq!(remove_components(&root, &["ocr".to_string()]).unwrap_err().code, "not_removable");
         assert_eq!(remove_components(&root, &["nvidia-driver".to_string()]).unwrap_err().code, "not_removable");
         assert_eq!(remove_components(&root, &["nope".to_string()]).unwrap_err().code, "unknown_component");
-        let _busy = try_claim(&["whisper-small".to_string()]).unwrap();
-        assert_eq!(remove_components(&root, &["whisper-small".to_string()]).unwrap_err().code, "busy");
+        let _busy = try_claim(&["roformer-q5".to_string()]).unwrap();
+        assert_eq!(remove_components(&root, &["roformer-q5".to_string()]).unwrap_err().code, "busy");
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -3713,15 +3625,15 @@ mod tests {
         let root = temp_root("import-dst");
         let src = temp_root("import-src");
         let all = manifest();
-        let tiny = all.iter().find(|c| c.id == "whisper-tiny").unwrap();
+        let tiny = all.iter().find(|c| c.id == "langid").unwrap();
         for f in tiny.files {
             let name = Path::new(f.dest_rel).file_name().unwrap();
             sized(&src.join("nested").join(name), f.size);
         }
         sized(&src.join(".hidden").join("model.bin"), 1);
         sized(&src.join("other").join("config.json"), 7);
-        let r = import_from_dir(&root, &src, Some("whisper-tiny"), true, false);
-        assert_eq!(r.imported, vec!["whisper-tiny".to_string()]);
+        let r = import_from_dir(&root, &src, Some("langid"), true, false);
+        assert_eq!(r.imported, vec!["langid".to_string()]);
         assert_eq!(r.files, tiny.files.len());
         assert!(r.errors.is_empty(), "{:?}", r.errors);
         assert!(component_status(&root, tiny).installed);
@@ -3742,7 +3654,7 @@ mod tests {
     fn a_model_another_program_has_is_linked_in_and_says_where_from() {
         let root = temp_root("neighbor-dst");
         let other = temp_root("neighbor-src");
-        let tiny = manifest().into_iter().find(|c| c.id == "whisper-tiny").unwrap();
+        let tiny = manifest().into_iter().find(|c| c.id == "langid").unwrap();
         // the neighbour keeps the model in a folder of the same name, under its own layout
         let in_neighbor = |rel: &str| {
             let rel = Path::new(rel);
@@ -3759,7 +3671,7 @@ mod tests {
         assert!(import_from_neighbors(&root, &[("ace".to_string(), decoy.clone())], false, None).is_empty());
 
         let took = import_from_neighbors(&root, &[("yue2".to_string(), other.clone())], false, None);
-        assert!(took.contains(&("whisper-tiny".to_string(), "yue2".to_string())));
+        assert!(took.contains(&("langid".to_string(), "yue2".to_string())));
         let status = component_status(&root, &tiny);
         assert!(status.installed);
         assert_eq!(status.taken_from.as_deref(), Some("yue2"));
@@ -3872,5 +3784,32 @@ mod tests {
         let tree = tmp.path().join("tree");
         extract_archive(&archive, "pkg.tar.gz", Extract::Tree, &tree).unwrap();
         assert_eq!(std::fs::read(tree.join("pkg/include/foo.h")).unwrap(), b"header");
+    }
+
+    /// Прежний Whisper уходит: всё, что назвала его запись, и россыпь CUDA 11 без записи; чужое остаётся.
+    #[test]
+    fn the_former_whisper_goes_and_other_files_stay() {
+        let root = tempfile::tempdir().unwrap();
+        let w = root.path().join("tools/whisper");
+        std::fs::create_dir_all(&w).unwrap();
+        for f in ["whisper-faster.exe", "cublas64_11.dll", "cudnn_ops_infer64_8.dll", "notes.txt"] {
+            std::fs::write(w.join(f), b"x").unwrap();
+        }
+        std::fs::write(w.join("old-extra.dll"), b"x").unwrap();
+        std::fs::write(
+            w.join("_whisper.zip.json"),
+            r#"{"sha256":"s","url":"u","files":[{"path":"tools/whisper/old-extra.dll","size":1},{"path":"models/elsewhere.bin","size":1}]}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.path().join("models")).unwrap();
+        std::fs::write(root.path().join("models/elsewhere.bin"), b"x").unwrap();
+        remove_retired_whisper(root.path());
+        for gone in ["whisper-faster.exe", "cublas64_11.dll", "cudnn_ops_infer64_8.dll", "old-extra.dll", "_whisper.zip.json"] {
+            assert!(!w.join(gone).exists(), "{gone}");
+        }
+        for kept in ["notes.txt"] {
+            assert!(w.join(kept).is_file(), "{kept}");
+        }
+        assert!(root.path().join("models/elsewhere.bin").is_file());
     }
 }
